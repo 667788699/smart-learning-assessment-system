@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>情緒興趣識別平台</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
+    video { border: 1px solid #ccc; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>📸 情緒興趣識別</h1>
+  <video id="video" width="320" height="240" autoplay></video>
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <p id="result">等待辨識…</p>
+  <button onclick="downloadPDF()">📄 匯出 PDF 報告</button>
+
+  <script src="/static/script.js"></script>
+</body>
+</html><!DOCTYPE html>
+<html>
+<head>
+  <title>情緒辨識</title>
+</head>
+<body>
+  <h1>📸 即時情緒辨識</h1>
+  <video id="video" width="320" height="240" autoplay></video>
+  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+  <p id="result">等待辨識...</p>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+
