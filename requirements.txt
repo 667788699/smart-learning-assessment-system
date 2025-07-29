@@ -1,9 +1,9 @@
 # Flask 核心
 Flask==3.0.0
-Flask-SQLAlchemy==3.1.1
+Flask-SQLAlchemy==3.0.5
 Flask-Bcrypt==1.0.1
 Werkzeug==3.0.1
-SQLAlchemy==2.0.25
+SQLAlchemy==2.0.23
 
 # Web 伺服器
 gunicorn==21.2.0
