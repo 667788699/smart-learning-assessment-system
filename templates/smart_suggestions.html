@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block title %}智慧建議 - {{ child.nickname }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    <i class="fas fa-lightbulb text-warning me-2"></i>
+                    {{ child.nickname }} 的個人化學習建議
+                </h2>
+                <div>
+                    <a href="{{ url_for('generate_report', child_id=child.id) }}" class="btn btn-primary me-2">
+                        <i class="fas fa-file-pdf me-2"></i>下載分析報告
+                    </a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>返回學習中心
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 學習表現總覽 -->
+    <div class="row mb-5">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-radar text-primary me-2"></i>
+                        學習表現總覽
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 mb-3">
+                            <div class="performance-metric">
+                                <i class="fas fa-book-reader fa-2x text-primary mb-2"></i>
+                                <h3>{{ performance_data.total_sessions }}</h3>
+                                <p class="text-muted mb-0">總學習次數</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="performance-metric">
+                                <i class="fas fa-hourglass-half fa-2x text-success mb-2"></i>
+                                <h3>{{ "%.1f" | format(performance_data.total_hours) }}</h3>
+                                <p class="text-muted mb-0">總學習時數</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="performance-metric">
+                                <i class="fas fa-brain fa-2x text-info mb-2"></i>
+                                <h3>{{ performance_data.avg_attention }}%</h3>
+                                <p class="text-muted mb-0">平均專注度</p>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="performance-metric">
+                                <i class="fas fa-chart-line fa-2x text-warning mb-2"></i>
+                                <h3>
+                                    {% if performance_data.improvement_rate > 0 %}
+                                        +{{ performance_data.improvement_rate }}%
+                                    {% else %}
+                                        {{ performance_data.improvement_rate }}%
+                                    {% endif %}
+                                </h3>
+                                <p class="text-muted mb-0">進步幅度</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {% if performance_data.best_subject %}
+                    <div class="mt-4 text-center">
+                        <div class="alert alert-success">
+                            <i class="fas fa-trophy me-2"></i>
+                            表現最佳科目：<strong>{{ performance_data.best_subject }}</strong>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- 學習者資訊 -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-graduate text-success me-2"></i>
+                        學習者資訊
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="learner-info">
+                        <div class="info-item">
+                            <i class="fas fa-user-tag me-2"></i>
+                            <strong>姓名：</strong>{{ child.nickname }}
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-birthday-cake me-2"></i>
+                            <strong>年齡：</strong>{{ child.age }} 歲
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-venus-mars me-2"></i>
+                            <strong>性別：</strong>{{ {'male': '男生', 'female': '女生'}[child.gender] }}
+                        </div>
+                        <div class="info-item">
+                            <i class="fas fa-school me-2"></i>
+                            <strong>教育階段：</strong>{{ {'elementary': '國小', 'middle': '國中', 'high': '高中'}[child.education_stage] }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 個人化建議區域 -->
+    <div class="row">
+        <!-- 年齡適性建議 -->
+        {% if suggestions.age_appropriate %}
+        <div class="col-lg-6 mb-4">
+            <div class="card suggestion-card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-child me-2"></i>
+                        年齡適性建議
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for suggestion in suggestions.age_appropriate %}
+                    <div class="suggestion-item">
+                        <i class="fas fa-check-circle text-primary me-2"></i>
+                        {{ suggestion }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 學習風格建議 -->
+        {% if suggestions.learning_style %}
+        <div class="col-lg-6 mb-4">
+            <div class="card suggestion-card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-palette me-2"></i>
+                        學習風格建議
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for suggestion in suggestions.learning_style %}
+                    <div class="suggestion-item">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        {{ suggestion }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 專注力提升建議 -->
+        {% if suggestions.attention_improvement %}
+        <div class="col-lg-6 mb-4">
+            <div class="card suggestion-card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-brain me-2"></i>
+                        專注力提升建議
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for suggestion in suggestions.attention_improvement %}
+                    <div class="suggestion-item">
+                        <i class="fas fa-check-circle text-info me-2"></i>
+                        {{ suggestion }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 時間規劃建議 -->
+        {% if suggestions.schedule %}
+        <div class="col-lg-6 mb-4">
+            <div class="card suggestion-card">
+                <div class="card-header bg-warning text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar-alt me-2"></i>
+                        時間規劃建議
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% for suggestion in suggestions.schedule %}
+                    <div class="suggestion-item">
+                        <i class="fas fa-check-circle text-warning me-2"></i>
+                        {{ suggestion }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- 科目專屬建議 -->
+        {% if suggestions.subject_specific %}
+        <div class="col-12 mb-4">
+            <div class="card suggestion-card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-book me-2"></i>
+                        科目專屬建議
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for suggestion in suggestions.subject_specific %}
+                        <div class="col-md-6">
+                            <div class="suggestion-item">
+                                <i class="fas fa-check-circle text-danger me-2"></i>
+                                {{ suggestion }}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- 專注度趨勢視覺化 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-area text-primary me-2"></i>
+                        學習專注度趨勢分析
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="focusTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// 創建專注度趨勢圖
+const ctx = document.getElementById('focusTrendChart').getContext('2d');
+
+// 生成模擬數據（實際應從後端獲取）
+const labels = [];
+const data = [];
+for (let i = 0; i < 30; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - (29 - i));
+    labels.push(date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' }));
+    data.push(Math.floor(Math.random() * 30) + 70); // 70-100的隨機數
+}
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: '專注度 (%)',
+            data: data,
+            borderColor: '#3498DB',
+            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+            borderWidth: 3,
+            pointRadius: 4,
+            pointBackgroundColor: '#3498DB',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
+                    }
+                }
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return '專注度: ' + context.parsed.y + '%';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+
+<style>
+.performance-metric {
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 10px;
+    transition: transform 0.3s ease;
+}
+
+.performance-metric:hover {
+    transform: translateY(-5px);
+    background: #e9ecef;
+}
+
+.learner-info {
+    font-size: 1.1rem;
+}
+
+.info-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-card {
+    height: 100%;
+    transition: transform 0.3s ease;
+}
+
+.suggestion-card:hover {
+    transform: translateY(-5px);
+}
+
+.suggestion-item {
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    line-height: 1.6;
+}
+
+.suggestion-item:last-child {
+    margin-bottom: 0;
+}
+
+#focusTrendChart {
+    max-height: 300px;
+}
+
+.card-header {
+    font-weight: 600;
+}
+</style>
+{% endblock %}

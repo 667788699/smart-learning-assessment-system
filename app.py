@@ -7,12 +7,15 @@ import os
 import sqlite3
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.graphics.shapes import Drawing
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
 from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
 try:
@@ -20,6 +23,10 @@ try:
    matplotlib.use('Agg')  # 使用非互動式後端
    import matplotlib.pyplot as plt
    import numpy as np
+   from matplotlib.font_manager import FontProperties
+   # 設定中文字體
+   plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+   plt.rcParams['axes.unicode_minus'] = False
    CHARTS_AVAILABLE = True
 except ImportError:
    CHARTS_AVAILABLE = False
@@ -36,6 +43,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
+# 註冊中文字體用於 PDF
+try:
+    # 嘗試使用系統字體
+    pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
+except:
+    # 如果找不到中文字體，使用內建字體
+    pass
+
 # 資料庫模型
 class User(db.Model):
    id = db.Column(db.Integer, primary_key=True)
@@ -43,18 +58,28 @@ class User(db.Model):
    email = db.Column(db.String(120), unique=True, nullable=False)
    password_hash = db.Column(db.String(60), nullable=False)
    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-   study_sessions = db.relationship('StudySession', backref='user', lazy=True)
+   children = db.relationship('Child', backref='user', lazy=True, cascade='all, delete-orphan')
+
+class Child(db.Model):
+   id = db.Column(db.Integer, primary_key=True)
+   user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+   nickname = db.Column(db.String(80), nullable=False)
+   gender = db.Column(db.String(10), nullable=False)  # male/female
+   age = db.Column(db.Integer, nullable=False)
+   education_stage = db.Column(db.String(20), nullable=False)  # elementary/middle/high
+   created_at = db.Column(db.DateTime, default=datetime.utcnow)
+   study_sessions = db.relationship('StudySession', backref='child', lazy=True, cascade='all, delete-orphan')
 
 class StudySession(db.Model):
    id = db.Column(db.Integer, primary_key=True)
-   user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+   child_id = db.Column(db.Integer, db.ForeignKey('child.id'), nullable=False)
    subject = db.Column(db.String(50), nullable=False)
    duration_minutes = db.Column(db.Integer, nullable=False)
    start_time = db.Column(db.DateTime, default=datetime.utcnow)
    end_time = db.Column(db.DateTime)
    avg_attention = db.Column(db.Float)
    avg_emotion_score = db.Column(db.Float)
-   emotion_data = db.relationship('EmotionData', backref='study_session', lazy=True)
+   emotion_data = db.relationship('EmotionData', backref='study_session', lazy=True, cascade='all, delete-orphan')
 
 class EmotionData(db.Model):
    id = db.Column(db.Integer, primary_key=True)
@@ -64,14 +89,27 @@ class EmotionData(db.Model):
    attention_level = db.Column(db.Integer)  # 1-低, 2-中, 3-高
    confidence = db.Column(db.Float)
 
-# 學科分類配置
+# 學科分類配置 - 更新程式設計為電腦科學
 SUBJECTS = {
    'math': '數學',
    'science': '自然科學',
    'language': '語言文學',
    'social': '社會科學',
    'art': '藝術創作',
-   'programming': '程式設計'
+   'cs': '電腦科學'  # 原本的 programming 改為 cs
+}
+
+# 教育階段中文對照
+EDUCATION_STAGES = {
+   'elementary': '國小',
+   'middle': '國中',
+   'high': '高中'
+}
+
+# 性別中文對照
+GENDERS = {
+   'male': '男生',
+   'female': '女生'
 }
 
 @app.route('/')
@@ -124,17 +162,73 @@ def login():
    
    return render_template('login.html')
 
-@app.route('/dashboard')
-def dashboard():
-   """使用者儀表板 - 學科選擇頁面"""
+@app.route('/child_selection')
+def child_selection():
+   """選擇或新增小孩"""
    if 'user_id' not in session:
        return redirect(url_for('login'))
    
    user_id = session['user_id']
-   user = User.query.get(user_id)
+   children = Child.query.filter_by(user_id=user_id).all()
    
-   # 獲取使用者歷史學習記錄統計 - 修正變數名稱避免與 session 衝突
-   user_study_sessions = StudySession.query.filter_by(user_id=user_id).all()
+   return render_template('child_selection.html', children=children)
+
+@app.route('/create_child', methods=['POST'])
+def create_child():
+   """創建新的小孩檔案"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   data = request.get_json()
+   nickname = data.get('nickname')
+   gender = data.get('gender')
+   age = data.get('age')
+   education_stage = data.get('education_stage')
+   
+   # 檢查是否已達到4個小孩的限制
+   existing_children = Child.query.filter_by(user_id=session['user_id']).count()
+   if existing_children >= 4:
+       return jsonify({'success': False, 'message': '最多只能創建4個小孩檔案'})
+   
+   # 創建新的小孩檔案
+   child = Child(
+       user_id=session['user_id'],
+       nickname=nickname,
+       gender=gender,
+       age=int(age),
+       education_stage=education_stage
+   )
+   db.session.add(child)
+   db.session.commit()
+   
+   return jsonify({'success': True, 'child_id': child.id})
+
+@app.route('/select_child/<int:child_id>')
+def select_child(child_id):
+   """選擇小孩進入學習環境"""
+   if 'user_id' not in session:
+       return redirect(url_for('login'))
+   
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   if not child:
+       return redirect(url_for('child_selection'))
+   
+   session['child_id'] = child.id
+   session['child_nickname'] = child.nickname
+   
+   return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+def dashboard():
+   """使用者儀表板 - 學科選擇頁面"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return redirect(url_for('child_selection'))
+   
+   child_id = session['child_id']
+   child = Child.query.get(child_id)
+   
+   # 獲取小孩的學習記錄統計
+   user_study_sessions = StudySession.query.filter_by(child_id=child_id).all()
    subject_stats = {}
    
    for study_record in user_study_sessions:
@@ -157,34 +251,37 @@ def dashboard():
    return render_template('dashboard.html', 
                         subjects=SUBJECTS, 
                         stats=subject_stats,
-                        user=user)
+                        child=child)
 
 @app.route('/study/<subject>')
 def study_session(subject):
    """學習檢測頁面"""
-   if 'user_id' not in session:
-       return redirect(url_for('login'))
+   if 'user_id' not in session or 'child_id' not in session:
+       return redirect(url_for('child_selection'))
    
    if subject not in SUBJECTS:
        return redirect(url_for('dashboard'))
    
+   child = Child.query.get(session['child_id'])
+   
    return render_template('study.html', 
                         subject=subject, 
-                        subject_name=SUBJECTS[subject])
+                        subject_name=SUBJECTS[subject],
+                        child=child)
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
    """開始學習階段"""
-   if 'user_id' not in session:
-       return jsonify({'success': False, 'message': '請先登入'})
+   if 'user_id' not in session or 'child_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入並選擇小孩'})
    
    data = request.get_json()
    subject = data.get('subject')
-   duration = data.get('duration', 30)  # 預設30分鐘
+   duration = data.get('duration', 30)
    
    # 建立新的學習階段記錄
    new_study_session = StudySession(
-       user_id=session['user_id'],
+       child_id=session['child_id'],
        subject=subject,
        duration_minutes=duration,
        start_time=datetime.utcnow()
@@ -251,27 +348,278 @@ def end_session():
    
    return jsonify({'success': False, 'message': '找不到學習階段'})
 
-@app.route('/generate_report/<int:session_id>')
-def generate_report(session_id):
-   """生成PDF學習報告"""
+@app.route('/data_analysis')
+def data_analysis():
+   """數據分析頁面"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return redirect(url_for('child_selection'))
+   
+   child = Child.query.get(session['child_id'])
+   study_sessions = StudySession.query.filter_by(child_id=child.id).order_by(StudySession.start_time.desc()).all()
+   
+   # 準備圖表數據
+   chart_data = prepare_chart_data(study_sessions)
+   
+   return render_template('data_analysis.html', 
+                        child=child, 
+                        study_sessions=study_sessions,
+                        chart_data=chart_data)
+
+@app.route('/smart_suggestions')
+def smart_suggestions():
+   """智慧建議頁面"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return redirect(url_for('child_selection'))
+   
+   child = Child.query.get(session['child_id'])
+   study_sessions = StudySession.query.filter_by(child_id=child.id).all()
+   
+   # 生成個人化建議
+   suggestions = generate_comprehensive_suggestions(child, study_sessions)
+   
+   # 準備視覺化數據
+   performance_data = prepare_performance_data(study_sessions)
+   
+   return render_template('smart_suggestions.html',
+                        child=child,
+                        suggestions=suggestions,
+                        performance_data=performance_data)
+
+@app.route('/generate_report/<int:child_id>')
+def generate_report(child_id):
+   """生成PDF學習報告 - 從智慧建議頁面"""
    if 'user_id' not in session:
        return redirect(url_for('login'))
    
-   target_study_session = StudySession.query.get_or_404(session_id)
-   
-   # 確認是當前使用者的階段
-   if target_study_session.user_id != session['user_id']:
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   if not child:
        return redirect(url_for('dashboard'))
    
+   # 獲取所有學習記錄
+   study_sessions = StudySession.query.filter_by(child_id=child.id).all()
+   
    # 生成PDF報告
-   pdf_path = create_detailed_report(target_study_session)
+   pdf_path = create_comprehensive_report(child, study_sessions)
    
    return send_file(pdf_path, as_attachment=True, 
-                   download_name=f'學習報告_{target_study_session.subject}_{datetime.now().strftime("%Y%m%d")}.pdf')
+                   download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
 
-def create_detailed_report(study_session):
-   """建立詳細的PDF報告"""
-   filename = f'report_{study_session.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+@app.route('/delete_child/<int:child_id>', methods=['POST'])
+def delete_child(child_id):
+   """刪除小孩檔案"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   if child:
+       db.session.delete(child)
+       db.session.commit()
+       
+       # 如果刪除的是當前選中的小孩，清除session
+       if session.get('child_id') == child_id:
+           session.pop('child_id', None)
+           session.pop('child_nickname', None)
+       
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該小孩檔案'})
+
+@app.route('/reset_learning_history/<int:child_id>', methods=['POST'])
+def reset_learning_history(child_id):
+   """重置學習歷程"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   if child:
+       # 刪除所有學習記錄
+       StudySession.query.filter_by(child_id=child_id).delete()
+       db.session.commit()
+       
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該小孩檔案'})
+
+@app.route('/delete_account', methods=['POST'])
+def delete_account():
+   """刪除帳號"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   user = User.query.get(session['user_id'])
+   if user:
+       db.session.delete(user)
+       db.session.commit()
+       session.clear()
+       
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該帳號'})
+
+def prepare_chart_data(study_sessions):
+   """準備圖表數據"""
+   chart_data = {
+       'subjects': [],
+       'attention_scores': [],
+       'study_times': [],
+       'dates': [],
+       'attention_trend': []
+   }
+   
+   # 按科目統計
+   subject_stats = {}
+   for session in study_sessions:
+       if session.subject not in subject_stats:
+           subject_stats[session.subject] = {
+               'total_time': 0,
+               'avg_attention': 0,
+               'count': 0
+           }
+       subject_stats[session.subject]['total_time'] += session.duration_minutes
+       if session.avg_attention:
+           subject_stats[session.subject]['avg_attention'] += session.avg_attention
+           subject_stats[session.subject]['count'] += 1
+   
+   # 轉換為圖表格式
+   for subject, stats in subject_stats.items():
+       chart_data['subjects'].append(SUBJECTS.get(subject, subject))
+       chart_data['study_times'].append(stats['total_time'])
+       if stats['count'] > 0:
+           avg = stats['avg_attention'] / stats['count']
+           chart_data['attention_scores'].append(round(avg * 100 / 3))  # 轉換為百分比
+       else:
+           chart_data['attention_scores'].append(0)
+   
+   # 專注度趨勢（最近10次）
+   recent_sessions = sorted(study_sessions, key=lambda x: x.start_time)[-10:]
+   for session in recent_sessions:
+       chart_data['dates'].append(session.start_time.strftime('%m/%d'))
+       if session.avg_attention:
+           chart_data['attention_trend'].append(round(session.avg_attention * 100 / 3))
+       else:
+           chart_data['attention_trend'].append(0)
+   
+   return chart_data
+
+def prepare_performance_data(study_sessions):
+   """準備表現數據"""
+   data = {
+       'total_sessions': len(study_sessions),
+       'total_hours': sum(s.duration_minutes for s in study_sessions) / 60,
+       'avg_attention': 0,
+       'best_subject': '',
+       'improvement_rate': 0
+   }
+   
+   if study_sessions:
+       # 計算平均專注度
+       attention_sessions = [s for s in study_sessions if s.avg_attention]
+       if attention_sessions:
+           data['avg_attention'] = round(sum(s.avg_attention for s in attention_sessions) / len(attention_sessions) * 100 / 3)
+       
+       # 找出最佳科目
+       subject_performance = {}
+       for session in study_sessions:
+           if session.avg_attention:
+               if session.subject not in subject_performance:
+                   subject_performance[session.subject] = []
+               subject_performance[session.subject].append(session.avg_attention)
+       
+       if subject_performance:
+           best_subject = max(subject_performance.items(), key=lambda x: sum(x[1])/len(x[1]))
+           data['best_subject'] = SUBJECTS.get(best_subject[0], best_subject[0])
+       
+       # 計算進步率
+       if len(attention_sessions) >= 5:
+           early_avg = sum(s.avg_attention for s in attention_sessions[:3]) / 3
+           recent_avg = sum(s.avg_attention for s in attention_sessions[-3:]) / 3
+           data['improvement_rate'] = round((recent_avg - early_avg) / early_avg * 100)
+   
+   return data
+
+def generate_comprehensive_suggestions(child, study_sessions):
+   """生成全面的個人化建議"""
+   suggestions = {
+       'learning_style': [],
+       'schedule': [],
+       'subject_specific': [],
+       'attention_improvement': [],
+       'age_appropriate': []
+   }
+   
+   # 基於年齡和教育階段的建議
+   if child.education_stage == 'elementary':
+       if child.age <= 8:
+           suggestions['age_appropriate'].append("建議每次學習時間控制在15-20分鐘，並搭配互動式學習活動")
+           suggestions['age_appropriate'].append("可以使用獎勵貼紙或積分制度來增加學習動機")
+       else:
+           suggestions['age_appropriate'].append("可以逐漸延長學習時間至25-30分鐘，培養專注力")
+           suggestions['age_appropriate'].append("鼓勵自主選擇學習主題，提升學習興趣")
+   elif child.education_stage == 'middle':
+       suggestions['age_appropriate'].append("這個階段的學生需要更多的自主學習空間，建議設定明確的學習目標")
+       suggestions['age_appropriate'].append("可以嘗試番茄工作法，25分鐘專注學習，5分鐘休息")
+   else:  # high school
+       suggestions['age_appropriate'].append("高中生需要更長的專注時間，建議每次學習45-60分鐘")
+       suggestions['age_appropriate'].append("重視學習效率，建議使用思維導圖等學習工具")
+   
+   # 基於性別的建議（謹慎處理，避免刻板印象）
+   if child.gender == 'female':
+       suggestions['learning_style'].append("研究顯示女生在合作學習環境中表現更好，可以考慮與朋友一起學習")
+   else:
+       suggestions['learning_style'].append("研究顯示男生在競爭性學習環境中較有動力，可以設定挑戰性目標")
+   
+   # 基於學習數據的建議
+   if study_sessions:
+       # 專注度分析
+       attention_sessions = [s for s in study_sessions if s.avg_attention]
+       if attention_sessions:
+           avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
+           
+           if avg_attention < 1.5:
+               suggestions['attention_improvement'].append("專注度偏低，建議檢查學習環境是否有干擾因素")
+               suggestions['attention_improvement'].append("可以嘗試使用白噪音或輕音樂幫助集中注意力")
+           elif avg_attention < 2.5:
+               suggestions['attention_improvement'].append("專注度中等，建議使用計時器設定專注時段")
+               suggestions['attention_improvement'].append("學習前做5分鐘的深呼吸或伸展運動")
+           else:
+               suggestions['attention_improvement'].append("專注度表現優秀！繼續保持良好的學習習慣")
+               suggestions['attention_improvement'].append("可以嘗試更有挑戰性的學習內容")
+       
+       # 學習時間分析
+       study_hours = {}
+       for session in study_sessions:
+           hour = session.start_time.hour
+           if hour not in study_hours:
+               study_hours[hour] = []
+           if session.avg_attention:
+               study_hours[hour].append(session.avg_attention)
+       
+       if study_hours:
+           best_hour = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
+           suggestions['schedule'].append(f"您的孩子在{best_hour[0]}點學習時專注度最高，建議安排重要科目在這個時段")
+       
+       # 科目建議
+       subject_performance = {}
+       for session in study_sessions:
+           if session.avg_attention:
+               if session.subject not in subject_performance:
+                   subject_performance[session.subject] = []
+               subject_performance[session.subject].append(session.avg_attention)
+       
+       for subject, performances in subject_performance.items():
+           avg_perf = sum(performances) / len(performances)
+           subject_name = SUBJECTS.get(subject, subject)
+           
+           if avg_perf < 2:
+               suggestions['subject_specific'].append(f"{subject_name}需要加強，建議採用更互動的學習方式")
+           else:
+               suggestions['subject_specific'].append(f"{subject_name}表現良好，可以增加學習深度")
+   
+   return suggestions
+
+def create_comprehensive_report(child, study_sessions):
+   """建立全面的PDF報告"""
+   filename = f'report_{child.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
    filepath = os.path.join('reports', filename)
    
    # 確保reports目錄存在
@@ -279,87 +627,178 @@ def create_detailed_report(study_session):
    
    doc = SimpleDocTemplate(filepath, pagesize=A4)
    story = []
+   
+   # 設定樣式
    styles = getSampleStyleSheet()
    
-   # 標題
+   # 自定義樣式以支援中文
    title_style = ParagraphStyle(
-       'TitleStyle',
+       'ChineseTitle',
        parent=styles['Title'],
+       fontName='Helvetica-Bold',
        fontSize=24,
-       textColor=colors.blue,
-       alignment=1,  # 置中
+       textColor=colors.HexColor('#2C3E50'),
+       alignment=TA_CENTER,
        spaceAfter=30
    )
    
-   story.append(Paragraph('智慧學習評估報告', title_style))
-   story.append(Spacer(1, 20))
+   heading_style = ParagraphStyle(
+       'ChineseHeading',
+       parent=styles['Heading1'],
+       fontName='Helvetica-Bold',
+       fontSize=16,
+       textColor=colors.HexColor('#34495E'),
+       spaceAfter=12
+   )
    
-   # 基本資訊
-   user = User.query.get(study_session.user_id)
+   normal_style = ParagraphStyle(
+       'ChineseNormal',
+       parent=styles['Normal'],
+       fontName='Helvetica',
+       fontSize=12,
+       leading=18
+   )
+   
+   # 標題頁
+   story.append(Paragraph('Learning Assessment Report', title_style))
+   story.append(Spacer(1, 30))
+   
+   # 基本資訊表格
+   user = User.query.get(child.user_id)
    basic_info = [
-       ['學習者', user.username],
-       ['學科', SUBJECTS.get(study_session.subject, study_session.subject)],
-       ['學習時間', f"{study_session.duration_minutes} 分鐘"],
-       ['開始時間', study_session.start_time.strftime('%Y-%m-%d %H:%M:%S')],
-       ['結束時間', study_session.end_time.strftime('%Y-%m-%d %H:%M:%S') if study_session.end_time else '進行中'],
-       ['平均專注度', f"{study_session.avg_attention:.2f}" if study_session.avg_attention else "計算中"]
+       ['Child Name', child.nickname],
+       ['Gender', GENDERS.get(child.gender, child.gender)],
+       ['Age', str(child.age)],
+       ['Education Stage', EDUCATION_STAGES.get(child.education_stage, child.education_stage)],
+       ['Report Date', datetime.now().strftime('%Y-%m-%d')],
+       ['Total Sessions', str(len(study_sessions))]
    ]
    
-   info_table = Table(basic_info, colWidths=[2*inch, 3*inch])
+   info_table = Table(basic_info, colWidths=[2.5*inch, 3.5*inch])
    info_table.setStyle(TableStyle([
-       ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-       ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-       ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-       ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-       ('FONTSIZE', (0, 0), (-1, 0), 14),
-       ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-       ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-       ('GRID', (0, 0), (-1, -1), 1, colors.black)
+       ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ECF0F1')),
+       ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
+       ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+       ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+       ('FONTSIZE', (0, 0), (-1, -1), 12),
+       ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+       ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7'))
    ]))
    
    story.append(info_table)
-   story.append(Spacer(1, 30))
+   story.append(PageBreak())
    
-   # 專注度分析圖表
-   emotion_data = EmotionData.query.filter_by(session_id=study_session.id).all()
+   # 學習統計分析
+   story.append(Paragraph('Learning Statistics Analysis', heading_style))
+   story.append(Spacer(1, 20))
    
-   if emotion_data:
-       # 嘗試生成專注度趨勢圖
-       attention_chart_path = create_attention_chart(emotion_data, study_session.id)
-       if attention_chart_path:
-           story.append(Paragraph('專注度變化趨勢', styles['Heading2']))
-           story.append(Image(attention_chart_path, width=6*inch, height=4*inch))
-           story.append(Spacer(1, 20))
+   if study_sessions:
+       # 統計數據
+       total_minutes = sum(s.duration_minutes for s in study_sessions)
+       total_hours = total_minutes / 60
        
-       # 嘗試生成情緒分布圖
-       emotion_chart_path = create_emotion_distribution_chart(emotion_data, study_session.id)
-       if emotion_chart_path:
-           story.append(Paragraph('情緒狀態分布', styles['Heading2']))
-           story.append(Image(emotion_chart_path, width=6*inch, height=4*inch))
-           story.append(Spacer(1, 20))
+       attention_sessions = [s for s in study_sessions if s.avg_attention]
+       if attention_sessions:
+           avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
+           avg_attention_percent = round(avg_attention * 100 / 3)
+       else:
+           avg_attention_percent = 0
        
-       # 如果圖表無法生成，添加統計摘要
-       if not attention_chart_path and not emotion_chart_path:
-           story.append(Paragraph('數據摘要', styles['Heading2']))
-           attention_summary = f"共檢測 {len(emotion_data)} 次，平均專注度: {study_session.avg_attention:.2f}" if study_session.avg_attention else "數據處理中"
-           story.append(Paragraph(attention_summary, styles['Normal']))
-           story.append(Spacer(1, 20))
+       stats_data = [
+           ['Total Study Time', f'{total_hours:.1f} hours ({total_minutes} minutes)'],
+           ['Average Attention Level', f'{avg_attention_percent}%'],
+           ['Study Frequency', f'{len(study_sessions)} sessions'],
+           ['Average Session Duration', f'{total_minutes/len(study_sessions):.1f} minutes']
+       ]
+       
+       stats_table = Table(stats_data, colWidths=[3*inch, 3*inch])
+       stats_table.setStyle(TableStyle([
+           ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8F4F8')),
+           ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
+           ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+           ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+           ('FONTSIZE', (0, 0), (-1, -1), 11),
+           ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+           ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3498DB'))
+       ]))
+       
+       story.append(stats_table)
+       story.append(Spacer(1, 30))
+       
+       # 科目表現分析
+       story.append(Paragraph('Subject Performance Analysis', heading_style))
+       story.append(Spacer(1, 20))
+       
+       subject_stats = {}
+       for session in study_sessions:
+           if session.subject not in subject_stats:
+               subject_stats[session.subject] = {
+                   'count': 0,
+                   'total_time': 0,
+                   'attention_sum': 0,
+                   'attention_count': 0
+               }
+           subject_stats[session.subject]['count'] += 1
+           subject_stats[session.subject]['total_time'] += session.duration_minutes
+           if session.avg_attention:
+               subject_stats[session.subject]['attention_sum'] += session.avg_attention
+               subject_stats[session.subject]['attention_count'] += 1
+       
+       subject_data = [['Subject', 'Sessions', 'Total Time', 'Avg Attention']]
+       for subject, stats in subject_stats.items():
+           subject_name = SUBJECTS.get(subject, subject)
+           avg_att = 0
+           if stats['attention_count'] > 0:
+               avg_att = round(stats['attention_sum'] / stats['attention_count'] * 100 / 3)
+           subject_data.append([
+               subject_name,
+               str(stats['count']),
+               f"{stats['total_time']} min",
+               f"{avg_att}%"
+           ])
+       
+       subject_table = Table(subject_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+       subject_table.setStyle(TableStyle([
+           ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+           ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+           ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+           ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+           ('FONTSIZE', (0, 0), (-1, -1), 11),
+           ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+           ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
+           ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#95A5A6'))
+       ]))
+       
+       story.append(subject_table)
+       story.append(PageBreak())
    
    # 個人化建議
-   recommendations = generate_personalized_recommendations(user, study_session)
-   story.append(Paragraph('個人化學習建議', styles['Heading2']))
+   story.append(Paragraph('Personalized Learning Recommendations', heading_style))
+   story.append(Spacer(1, 20))
    
-   for recommendation in recommendations:
-       story.append(Paragraph(f"• {recommendation}", styles['Normal']))
-       story.append(Spacer(1, 10))
+   suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
-   # 歷史表現比較
-   historical_comparison = get_historical_comparison(user, study_session.subject)
-   if historical_comparison:
-       story.append(Spacer(1, 20))
-       story.append(Paragraph('歷史表現比較', styles['Heading2']))
-       story.append(Paragraph(historical_comparison, styles['Normal']))
+   # 建議分類顯示
+   for category, items in suggestions.items():
+       if items:
+           category_names = {
+               'learning_style': 'Learning Style Suggestions',
+               'schedule': 'Schedule Optimization',
+               'subject_specific': 'Subject-Specific Advice',
+               'attention_improvement': 'Attention Improvement Tips',
+               'age_appropriate': 'Age-Appropriate Recommendations'
+           }
+           
+           story.append(Paragraph(category_names.get(category, category), heading_style))
+           story.append(Spacer(1, 10))
+           
+           for item in items:
+               story.append(Paragraph(f"• {item}", normal_style))
+               story.append(Spacer(1, 8))
+           
+           story.append(Spacer(1, 20))
    
+   # 生成報告
    doc.build(story)
    return filepath
 
@@ -369,17 +808,16 @@ def create_attention_chart(emotion_data, session_id):
        return None
        
    try:
-       times = [data.timestamp for data in emotion_data]
+       times = [(data.timestamp - emotion_data[0].timestamp).total_seconds() / 60 for data in emotion_data]
        attention_levels = [data.attention_level for data in emotion_data]
        
        plt.figure(figsize=(10, 6))
        plt.plot(times, attention_levels, 'b-', linewidth=2, markersize=4, marker='o')
-       plt.title('專注度變化趨勢', fontsize=16, fontweight='bold')
-       plt.xlabel('時間', fontsize=12)
-       plt.ylabel('專注度等級', fontsize=12)
+       plt.title('Attention Level Trend', fontsize=16, fontweight='bold')
+       plt.xlabel('Time (minutes)', fontsize=12)
+       plt.ylabel('Attention Level', fontsize=12)
        plt.ylim(0, 4)
        plt.grid(True, alpha=0.3)
-       plt.xticks(rotation=45)
        plt.tight_layout()
        
        chart_path = f'reports/attention_chart_{session_id}.png'
@@ -407,12 +845,20 @@ def create_emotion_distribution_chart(emotion_data, session_id):
            return None
        
        plt.figure(figsize=(10, 6))
-       plt.bar(emotion_counts.keys(), emotion_counts.values(), 
-              color=['skyblue', 'lightgreen', 'salmon', 'gold', 'plum', 'orange'])
-       plt.title('情緒狀態分布', fontsize=16, fontweight='bold')
-       plt.xlabel('情緒類型', fontsize=12)
-       plt.ylabel('出現次數', fontsize=12)
+       bars = plt.bar(emotion_counts.keys(), emotion_counts.values(), 
+                      color=['#3498DB', '#2ECC71', '#E74C3C', '#F39C12', '#9B59B6', '#1ABC9C'])
+       plt.title('Emotion Distribution', fontsize=16, fontweight='bold')
+       plt.xlabel('Emotion Type', fontsize=12)
+       plt.ylabel('Frequency', fontsize=12)
        plt.xticks(rotation=45)
+       
+       # 添加數值標籤
+       for bar in bars:
+           height = bar.get_height()
+           plt.text(bar.get_x() + bar.get_width()/2., height,
+                   f'{int(height)}',
+                   ha='center', va='bottom')
+       
        plt.tight_layout()
        
        chart_path = f'reports/emotion_chart_{session_id}.png'
@@ -423,86 +869,6 @@ def create_emotion_distribution_chart(emotion_data, session_id):
    except Exception as e:
        print(f"建立情緒分布圖表時發生錯誤: {e}")
        return None
-
-def generate_personalized_recommendations(user, current_session):
-   """生成個人化學習建議"""
-   recommendations = []
-   
-   # 獲取使用者歷史數據
-   all_study_sessions = StudySession.query.filter_by(user_id=user.id).all()
-   subject_study_sessions = [s for s in all_study_sessions if s.subject == current_session.subject]
-   
-   # 基於專注度的建議
-   if current_session.avg_attention:
-       if current_session.avg_attention < 2:
-           recommendations.append("建議在學習前進行10分鐘的冥想或深呼吸練習，有助於提升專注力")
-           recommendations.append("考慮將學習時間縮短為20-25分鐘一個段落，中間休息5分鐘")
-       elif current_session.avg_attention > 2.5:
-           recommendations.append("您在這個學科表現出色的專注力！建議可以嘗試更具挑戰性的學習內容")
-   
-   # 基於學習次數的建議
-   if len(subject_study_sessions) >= 5:
-       avg_attention_trend = [s.avg_attention for s in subject_study_sessions[-5:] if s.avg_attention]
-       if len(avg_attention_trend) >= 3:
-           if avg_attention_trend[-1] > avg_attention_trend[0]:
-               recommendations.append(f"太棒了！您在{SUBJECTS[current_session.subject]}的專注度呈現上升趨勢，持續保持！")
-           else:
-               recommendations.append(f"建議調整{SUBJECTS[current_session.subject]}的學習方式，嘗試不同的學習策略")
-   
-   # 基於時間段的建議
-   study_hour = current_session.start_time.hour
-   if study_hour < 9:
-       recommendations.append("早晨學習很棒！大腦在這個時間段通常最為清晰")
-   elif study_hour > 21:
-       recommendations.append("建議避免太晚學習，可能會影響睡眠品質和隔天的學習效果")
-   
-   # 跨學科比較建議
-   if len(all_study_sessions) >= 3:
-       subject_avg = {}
-       for study_record in all_study_sessions:
-           if study_record.avg_attention and study_record.subject != current_session.subject:
-               if study_record.subject not in subject_avg:
-                   subject_avg[study_record.subject] = []
-               subject_avg[study_record.subject].append(study_record.avg_attention)
-       
-       best_subject = None
-       best_avg = 0
-       for subject, attentions in subject_avg.items():
-           avg = sum(attentions) / len(attentions)
-           if avg > best_avg:
-               best_avg = avg
-               best_subject = subject
-       
-       if best_subject and best_avg > (current_session.avg_attention or 0) + 0.5:
-           recommendations.append(f"您在{SUBJECTS[best_subject]}表現最佳，可以考慮將該學科的學習方法應用到其他科目")
-   
-   if not recommendations:
-       recommendations.append("繼續保持良好的學習習慣，定期檢視您的學習進度！")
-   
-   return recommendations
-
-def get_historical_comparison(user, subject):
-   """獲取歷史表現比較"""
-   historical_sessions = StudySession.query.filter_by(user_id=user.id, subject=subject).order_by(StudySession.start_time).all()
-   
-   if len(historical_sessions) < 2:
-       return "這是您在此學科的第一次記錄，期待看到您的進步！"
-   
-   recent_sessions = [s for s in historical_sessions[-3:] if s.avg_attention]
-   early_sessions = [s for s in historical_sessions[:3] if s.avg_attention]
-   
-   if not recent_sessions or not early_sessions:
-       return "數據不足以進行比較分析"
-   
-   recent_avg = sum(s.avg_attention for s in recent_sessions) / len(recent_sessions)
-   early_avg = sum(s.avg_attention for s in early_sessions) / len(early_sessions)
-   
-   if recent_avg > early_avg:
-       improvement = ((recent_avg - early_avg) / early_avg) * 100
-       return f"太棒了！相比初期，您的專注度提升了 {improvement:.1f}%"
-   else:
-       decline = ((early_avg - recent_avg) / early_avg) * 100
-       return f"最近的專注度相比初期下降了 {decline:.1f}%，建議調整學習策略"
 
 @app.route('/logout')
 def logout():

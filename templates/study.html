@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ subject_name }} - 學習檢測{% endblock %}
+{% block title %}{{ subject_name }} - {{ child.nickname }} 的學習{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -11,12 +11,12 @@
                 <div class="card-header">
                     <h4 class="mb-0">
                         <i class="fas fa-video text-primary me-2"></i>
-                        {{ subject_name }} - 學習檢測
+                        {{ child.nickname }} - {{ subject_name }} 學習檢測
                     </h4>
                 </div>
                 <div class="card-body text-center">
                     <div class="video-container mb-3">
-                        <video id="video" width="300" height="300" autoplay muted></video>
+                        <video id="video" width="640" height="480" autoplay muted></video>
                         <canvas id="canvas" width="300" height="300" style="display: none;"></canvas>
                     </div>
                     
@@ -48,7 +48,18 @@
                     <div class="mb-3">
                         <label for="studyDuration" class="form-label">學習時長（分鐘）</label>
                         <input type="number" class="form-control" id="studyDuration" 
-                               value="30" min="5" max="120">
+                               value="{{ 20 if child.education_stage == 'elementary' else 30 if child.education_stage == 'middle' else 45 }}" 
+                               min="5" max="120">
+                        <small class="text-muted">
+                            建議時長：
+                            {% if child.education_stage == 'elementary' %}
+                                國小生 15-25 分鐘
+                            {% elif child.education_stage == 'middle' %}
+                                國中生 25-35 分鐘
+                            {% else %}
+                                高中生 40-60 分鐘
+                            {% endif %}
+                        </small>
                     </div>
                     <div class="d-grid">
                         <button id="startButton" class="btn btn-success btn-lg">
@@ -118,7 +129,7 @@
                     <div class="row text-center">
                         <div class="col-12 mb-2">
                             <small class="text-muted">平均專注度</small>
-                            <div id="avgAttention" class="h4 text-primary">0.0</div>
+                            <div id="avgAttention" class="h4 text-primary">0%</div>
                         </div>
                         <div class="col-6">
                             <small class="text-muted">檢測次數</small>
@@ -147,7 +158,7 @@
             </div>
             <div class="modal-body">
                 <div class="text-center">
-                    <h4>恭喜完成 {{ subject_name }} 學習！</h4>
+                    <h4>{{ child.nickname }} 完成了 {{ subject_name }} 的學習！</h4>
                     <div class="row mt-4">
                         <div class="col-md-4">
                             <div class="card bg-light">
@@ -160,7 +171,7 @@
                         <div class="col-md-4">
                             <div class="card bg-light">
                                 <div class="card-body">
-                                    <h5 id="finalAttention">0.0</h5>
+                                    <h5 id="finalAttention">0%</h5>
                                     <small class="text-muted">平均專注度</small>
                                 </div>
                             </div>
@@ -181,15 +192,42 @@
                     返回學習中心
                 </button>
                 <button type="button" class="btn btn-primary" id="generateReportBtn">
-                    <i class="fas fa-file-pdf me-2"></i>生成學習報告
+                    <i class="fas fa-lightbulb me-2"></i>查看智慧建議
                 </button>
             </div>
         </div>
     </div>
 </div>
 
+<style>
+.video-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.video-container video {
+    max-width: 100%;
+    height: auto;
+    border: 3px solid #007bff;
+    border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+    .video-container video {
+        width: 100%;
+    }
+}
+</style>
+
 <script>
     const SUBJECT = '{{ subject }}';
     const SUBJECT_NAME = '{{ subject_name }}';
+    const CHILD_INFO = {
+        nickname: '{{ child.nickname }}',
+        age: {{ child.age }},
+        gender: '{{ child.gender }}',
+        education_stage: '{{ child.education_stage }}'
+    };
 </script>
 {% endblock %}
