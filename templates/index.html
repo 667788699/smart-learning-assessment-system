@@ -1,33 +1,69 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="UTF-8" />
-  <title>情緒興趣識別平台</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
-    video { border: 1px solid #ccc; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <h1>📸 情緒興趣識別</h1>
-  <video id="video" width="320" height="240" autoplay></video>
-  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
-  <p id="result">等待辨識…</p>
-  <button onclick="downloadPDF()">📄 匯出 PDF 報告</button>
+{% extends "base.html" %}
 
-  <script src="/static/script.js"></script>
-</body>
-</html><!DOCTYPE html>
-<html>
-<head>
-  <title>情緒辨識</title>
-</head>
-<body>
-  <h1>📸 即時情緒辨識</h1>
-  <video id="video" width="320" height="240" autoplay></video>
-  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
-  <p id="result">等待辨識...</p>
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
-</body>
-</html>
+{% block content %}
+<div class="hero-section text-center py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <h1 class="display-4 mb-4">
+                    <i class="fas fa-graduation-cap text-primary me-3"></i>
+                    兒少智慧學習評估系統
+                </h1>
+                <p class="lead mb-5">
+                    透過人工智慧技術即時分析學習專注度與情緒狀態，<br>
+                    提供個人化的學習建議與詳細分析報告
+                </p>
+                
+                {% if not session.username %}
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-md-2">
+                        <i class="fas fa-user-plus me-2"></i>立即註冊
+                    </a>
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-lg">
+                        <i class="fas fa-sign-in-alt me-2"></i>登入系統
+                    </a>
+                </div>
+                {% else %}
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-success btn-lg">
+                        <i class="fas fa-tachometer-alt me-2"></i>進入學習中心
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 
+<div class="container my-5">
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-eye fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">即時檢測</h5>
+                    <p class="card-text">透過攝影機即時監測學習狀態，分析專注度變化</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-chart-line fa-3x text-success mb-3"></i>
+                    <h5 class="card-title">數據分析</h5>
+                    <p class="card-text">詳細記錄每堂課的學習表現，生成個人化報告</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 text-center">
+                <div class="card-body">
+                    <i class="fas fa-lightbulb fa-3x text-warning mb-3"></i>
+                    <h5 class="card-title">智慧建議</h5>
+                    <p class="card-text">基於學習歷史提供個人化的學習策略建議</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

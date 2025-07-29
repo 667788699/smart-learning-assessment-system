@@ -1,1 +1,0 @@
-<!DOCTYPE html><html><head>  <title>情緒辨識</title></head><body>  <h1>📸 即時情緒辨識</h1>  <video id="video" width="320" height="240" autoplay></video>  <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>  <p id="result">等待辨識...</p>  <script src="{{ url_for('static', filename='script.js') }}"></script></body></html>

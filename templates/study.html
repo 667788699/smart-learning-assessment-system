@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject_name }} - 學習檢測{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 左側：攝影機畫面 -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-video text-primary me-2"></i>
+                        {{ subject_name }} - 學習檢測
+                    </h4>
+                </div>
+                <div class="card-body text-center">
+                    <div class="video-container mb-3">
+                        <video id="video" width="300" height="300" autoplay muted></video>
+                        <canvas id="canvas" width="300" height="300" style="display: none;"></canvas>
+                    </div>
+                    
+                    <!-- 攝影機狀態提示 -->
+                    <div id="cameraStatus" class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        正在啟動攝影機...
+                    </div>
+                    
+                    <!-- 檢測狀態警告 -->
+                    <div id="detectionWarning" class="alert alert-warning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="warningMessage"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右側：控制面板和狀態顯示 -->
+        <div class="col-lg-4">
+            <!-- 學習時間設定 -->
+            <div class="card mb-3" id="timeSettingCard">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clock text-primary me-2"></i>學習時間設定
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="studyDuration" class="form-label">學習時長（分鐘）</label>
+                        <input type="number" class="form-control" id="studyDuration" 
+                               value="30" min="5" max="120">
+                    </div>
+                    <div class="d-grid">
+                        <button id="startButton" class="btn btn-success btn-lg">
+                            <i class="fas fa-play me-2"></i>開始學習
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 學習狀態顯示 -->
+            <div class="card mb-3" id="statusCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tachometer-alt text-primary me-2"></i>學習狀態
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- 剩餘時間 -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>剩餘時間</span>
+                            <span id="remainingTime" class="badge bg-primary fs-6">00:00</span>
+                        </div>
+                        <div class="progress mt-2">
+                            <div id="timeProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 專注度狀態 -->
+                    <div class="mb-3">
+                        <div class="text-center">
+                            <h6>目前專注度</h6>
+                            <div id="attentionIndicator" class="attention-indicator">
+                                <div class="attention-light" id="lowAttention">
+                                    <span>低</span>
+                                </div>
+                                <div class="attention-light" id="mediumAttention">
+                                    <span>中</span>
+                                </div>
+                                <div class="attention-light" id="highAttention">
+                                    <span>高</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 控制按鈕 -->
+                    <div class="d-grid gap-2">
+                        <button id="pauseButton" class="btn btn-warning">
+                            <i class="fas fa-pause me-2"></i>暫停
+                        </button>
+                        <button id="endButton" class="btn btn-danger">
+                            <i class="fas fa-stop me-2"></i>結束學習
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 學習統計 -->
+            <div class="card" id="statsCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line text-primary me-2"></i>即時統計
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-12 mb-2">
+                            <small class="text-muted">平均專注度</small>
+                            <div id="avgAttention" class="h4 text-primary">0.0</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">檢測次數</small>
+                            <div id="detectionCount" class="h5">0</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">有效檢測</small>
+                            <div id="validDetections" class="h5">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 學習完成模態框 -->
+<div class="modal fade" id="sessionCompleteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    學習完成！
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <h4>恭喜完成 {{ subject_name }} 學習！</h4>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalDuration">0 分鐘</h5>
+                                    <small class="text-muted">學習時長</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalAttention">0.0</h5>
+                                    <small class="text-muted">平均專注度</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalDetections">0</h5>
+                                    <small class="text-muted">有效檢測次數</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="location.href='{{ url_for('dashboard') }}'">
+                    返回學習中心
+                </button>
+                <button type="button" class="btn btn-primary" id="generateReportBtn">
+                    <i class="fas fa-file-pdf me-2"></i>生成學習報告
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SUBJECT = '{{ subject }}';
+    const SUBJECT_NAME = '{{ subject_name }}';
+</script>
+{% endblock %}
