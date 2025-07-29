@@ -1,31 +1,31 @@
-# Flask 核心 - Python 3.13 測試通過版本
-Flask==3.0.0
+# Flask 核心 - Python 3.10 兼容版本
+Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
 Flask-Bcrypt==1.0.1
-Werkzeug==3.0.1
+Werkzeug==2.3.7
 SQLAlchemy==2.0.21
 
 # Web 伺服器
 gunicorn==21.2.0
 
 # PDF 和圖表生成
-reportlab==4.0.8
-matplotlib==3.8.4
-numpy==1.26.4
+reportlab==4.0.4
+matplotlib==3.7.2
+numpy==1.24.4
 
 # 加密
-bcrypt==4.1.2
+bcrypt==4.0.1
 
 # 模板引擎
-Jinja2==3.1.4
-MarkupSafe==2.1.5
+Jinja2==3.1.2
+MarkupSafe==2.1.3
 
 # 工具套件
-python-dotenv==1.0.1
+python-dotenv==1.0.0
 click==8.1.7
-python-dateutil==2.9.0
+python-dateutil==2.8.2
 
 # 其他必要套件
 itsdangerous==2.1.2
-blinker==1.7.0
-typing-extensions==4.8.0
+blinker==1.6.3
+typing-extensions==4.7.1
