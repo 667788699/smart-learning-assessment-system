@@ -1,3 +1,6 @@
+setuptools==68.2.2
+wheel==0.41.2
+
 # Flask 核心 - Python 3.10 兼容版本
 Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
