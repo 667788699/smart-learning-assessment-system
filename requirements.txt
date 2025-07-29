@@ -1,9 +1,9 @@
-# Flask 核心
+# Flask 核心 - Python 3.13 測試通過版本
 Flask==3.0.0
 Flask-SQLAlchemy==3.0.5
 Flask-Bcrypt==1.0.1
 Werkzeug==3.0.1
-SQLAlchemy==2.0.23
+SQLAlchemy==2.0.21
 
 # Web 伺服器
 gunicorn==21.2.0
@@ -28,3 +28,4 @@ python-dateutil==2.9.0
 # 其他必要套件
 itsdangerous==2.1.2
 blinker==1.7.0
+typing-extensions==4.8.0
