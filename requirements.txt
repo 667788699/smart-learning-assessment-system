@@ -1,4 +1,4 @@
-# Flask 核心 - Python 3.13 相容
+# Flask 核心
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Bcrypt==1.0.1
@@ -8,10 +8,9 @@ SQLAlchemy==2.0.25
 # Web 伺服器
 gunicorn==21.2.0
 
-# PDF 生成 - 無編譯問題
+# PDF 和圖表生成
 reportlab==4.0.8
-
-# 數據處理 - 使用預編譯版本
+matplotlib==3.8.4
 numpy==1.26.4
 
 # 加密
