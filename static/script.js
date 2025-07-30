@@ -970,11 +970,4 @@ window.addEventListener('beforeunload', function(e) {
     // 載入 TensorFlow.js
     const tfScript = document.createElement('script');
     tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js';
-    document.head.appendChild(onnxScript);
-
-    // 載入 TensorFlow.js
-    const tfScript = document.createElement('script');
-    tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js';
-    document.head.appendChild(tfScript);
-
-
+    //document.hea
