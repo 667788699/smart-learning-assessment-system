@@ -92,6 +92,24 @@
                         <span class="navbar-text me-3">
                             <i class="fas fa-user me-1"></i>{{ session.username }}
                         </span>
+                        <div class="dropdown d-inline">
+                            <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-cog"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="#" onclick="toggleTheme()">
+                                    <i class="fas fa-adjust me-2"></i>切換主題
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#profileModal">
+                                    <i class="fas fa-user-edit me-2"></i>修改個人資料
+                                </a></li>
+                                {% if session.child_id %}
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#childProfileModal">
+                                    <i class="fas fa-child me-2"></i>修改小孩資料
+                                </a></li>
+                                {% endif %}
+                            </ul>
+                        </div>
                         <a class="nav-link" href="{{ url_for('logout') }}">
                             <i class="fas fa-sign-out-alt me-1"></i>登出
                         </a>
@@ -112,8 +130,159 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- 個人資料修改模態框 -->
+    <div class="modal fade" id="profileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改個人資料</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="profileForm">
+                        <div class="mb-3">
+                            <label for="profileEmail" class="form-label">電子郵件</label>
+                            <input type="email" class="form-control" id="profileEmail">
+                        </div>
+                        <div class="mb-3">
+                            <label for="profilePassword" class="form-label">新密碼（選填）</label>
+                            <input type="password" class="form-control" id="profilePassword">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateProfile()">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 小孩資料修改模態框 -->
+    <div class="modal fade" id="childProfileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改小孩資料</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="childProfileForm">
+                        <div class="mb-3">
+                            <label for="childNickname" class="form-label">暱稱</label>
+                            <input type="text" class="form-control" id="childNickname">
+                        </div>
+                        <div class="mb-3">
+                            <label for="childAge" class="form-label">年齡</label>
+                            <input type="number" class="form-control" id="childAge" min="6" max="18">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">性別</label>
+                            <select class="form-select" id="childGender">
+                                <option value="male">男生</option>
+                                <option value="female">女生</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="childEducation" class="form-label">教育階段</label>
+                            <select class="form-select" id="childEducation">
+                                <option value="elementary">國小</option>
+                                <option value="middle">國中</option>
+                                <option value="high">高中</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateChildProfile()">儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script>
+        // 主題切換功能
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme') || 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // 載入主題設定
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.body.setAttribute('data-theme', savedTheme);
+        });
+
+        // 更新個人資料
+        async function updateProfile() {
+            const email = document.getElementById('profileEmail').value;
+            const password = document.getElementById('profilePassword').value;
+            
+            try {
+                const response = await fetch('/update_profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password || null
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('個人資料已更新');
+                    bootstrap.Modal.getInstance(document.getElementById('profileModal')).hide();
+                } else {
+                    alert(result.message || '更新失敗');
+                }
+            } catch (error) {
+                alert('更新失敗，請稍後再試');
+            }
+        }
+
+        // 更新小孩資料
+        async function updateChildProfile() {
+            const nickname = document.getElementById('childNickname').value;
+            const age = document.getElementById('childAge').value;
+            const gender = document.getElementById('childGender').value;
+            const education = document.getElementById('childEducation').value;
+            
+            const childId = {{ session.get('child_id', 0) }};
+            
+            try {
+                const response = await fetch(`/update_child/${childId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        nickname: nickname,
+                        age: age,
+                        gender: gender,
+                        education_stage: education
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('小孩資料已更新');
+                    location.reload();
+                } else {
+                    alert('更新失敗');
+                }
+            } catch (error) {
+                alert('更新失敗，請稍後再試');
+            }
+        }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

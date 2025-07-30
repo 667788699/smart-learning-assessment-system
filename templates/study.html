@@ -1,4 +1,86 @@
-{% extends "base.html" %}
+<!-- 學習統計 -->
+            <div class="card mb-3" id="statsCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line text-primary me-2"></i>即時統計
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-12 mb-2">
+                            <small class="text-muted">平均專注度</small>
+                            <div id="avgAttention" class="h4 text-primary">0%</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">檢測次數</small>
+                            <div id="detectionCount" class="h5">0</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">有效檢測</small>
+                            <div id="validDetections" class="h5">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 即時情緒 -->
+            <div class="card" id="emotionCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-smile text-warning me-2"></i>即時情緒
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="emotion-bars">
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>生氣 (Angry)</small>
+                                <small id="angry-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="angry-bar" class="progress-bar bg-danger" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>厭惡 (Disgust)</small>
+                                <small id="disgust-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="disgust-bar" class="progress-bar bg-warning" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>恐懼 (Fear)</small>
+                                <small id="fear-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="fear-bar" class="progress-bar bg-secondary" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>快樂 (Happy)</small>
+                                <small id="happy-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="happy-bar" class="progress-bar bg-success" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>中性 (Neutral)</small>
+                                <small id="neutral-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="neutral-bar" class="progress-bar bg-info" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>悲傷 (Sad)</small>
+                                <small id="sad-value">0%</small{% extends "base.html" %}
 
 {% block title %}{{ subject_name }} - {{ child.nickname }} 的學習{% endblock %}
 
@@ -119,7 +201,7 @@
             </div>
             
             <!-- 學習統計 -->
-            <div class="card" id="statsCard" style="display: none;">
+            <div class="card mb-3" id="statsCard" style="display: none;">
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-chart-line text-primary me-2"></i>即時統計
@@ -138,6 +220,82 @@
                         <div class="col-6">
                             <small class="text-muted">有效檢測</small>
                             <div id="validDetections" class="h5">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 即時情緒 -->
+            <div class="card" id="emotionCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-smile text-warning me-2"></i>即時情緒
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="emotion-bars">
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>生氣 (Angry)</small>
+                                <small id="angry-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="angry-bar" class="progress-bar bg-danger" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>厭惡 (Disgust)</small>
+                                <small id="disgust-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="disgust-bar" class="progress-bar bg-warning" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>恐懼 (Fear)</small>
+                                <small id="fear-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="fear-bar" class="progress-bar bg-secondary" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>快樂 (Happy)</small>
+                                <small id="happy-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="happy-bar" class="progress-bar bg-success" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>中性 (Neutral)</small>
+                                <small id="neutral-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="neutral-bar" class="progress-bar bg-info" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>悲傷 (Sad)</small>
+                                <small id="sad-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="sad-bar" class="progress-bar bg-primary" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="emotion-item mb-2">
+                            <div class="d-flex justify-content-between">
+                                <small>驚訝 (Surprise)</small>
+                                <small id="surprise-value">0%</small>
+                            </div>
+                            <div class="progress" style="height: 15px;">
+                                <div id="surprise-bar" class="progress-bar bg-purple" style="width: 0%; background-color: #9b59b6;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>

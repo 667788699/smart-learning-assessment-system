@@ -15,6 +15,7 @@ from reportlab.graphics.charts.linecharts import HorizontalLineChart
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
@@ -45,11 +46,15 @@ bcrypt = Bcrypt(app)
 
 # 註冊中文字體用於 PDF
 try:
-    # 嘗試使用系統字體
-    pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
+    # 嘗試註冊 CID 字體
+    pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
 except:
-    # 如果找不到中文字體，使用內建字體
-    pass
+    try:
+        # 嘗試使用系統字體
+        pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
+    except:
+        # 如果找不到中文字體，使用內建字體
+        pass
 
 # 資料庫模型
 class User(db.Model):
@@ -585,7 +590,7 @@ def generate_comprehensive_suggestions(child, study_sessions):
                suggestions['attention_improvement'].append("專注度表現優秀！繼續保持良好的學習習慣")
                suggestions['attention_improvement'].append("可以嘗試更有挑戰性的學習內容")
        
-       # 學習時間分析
+       # 時間規劃建議
        study_hours = {}
        for session in study_sessions:
            hour = session.start_time.hour
@@ -610,10 +615,58 @@ def generate_comprehensive_suggestions(child, study_sessions):
            avg_perf = sum(performances) / len(performances)
            subject_name = SUBJECTS.get(subject, subject)
            
-           if avg_perf < 2:
-               suggestions['subject_specific'].append(f"{subject_name}需要加強，建議採用更互動的學習方式")
-           else:
-               suggestions['subject_specific'].append(f"{subject_name}表現良好，可以增加學習深度")
+           # 根據教育階段和科目給予更具體建議
+           if subject == 'math':
+               if child.education_stage == 'elementary':
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議使用實物教具和圖像化教學")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試趣味數學遊戲加深理解")
+               elif child.education_stage == 'middle':
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議分解複雜問題為小步驟")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以挑戰奧數題型")
+               else:  # high school
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議建立錯題本並定期複習")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試大學先修課程")
+           
+           elif subject == 'science':
+               if child.education_stage == 'elementary':
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做實驗觀察自然現象")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參加科學營隊")
+               elif child.education_stage == 'middle':
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議使用概念圖整理知識")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參加科展競賽")
+               else:
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議加強實驗設計能力")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以閱讀科學期刊文章")
+           
+           elif subject == 'language':
+               if avg_perf < 2:
+                   suggestions['subject_specific'].append(f"{subject_name}需要加強，建議每日閱讀30分鐘並寫讀書心得")
+               else:
+                   suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試創意寫作或參加作文比賽")
+           
+           elif subject == 'cs':
+               if child.education_stage == 'elementary':
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議從Scratch圖像化程式開始")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習基礎Python")
+               else:
+                   if avg_perf < 2:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議先理解邏輯概念再練習編碼")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參加程式競賽或開發小專案")
    
    return suggestions
 
@@ -869,6 +922,92 @@ def create_emotion_distribution_chart(emotion_data, session_id):
    except Exception as e:
        print(f"建立情緒分布圖表時發生錯誤: {e}")
        return None
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+   """更新個人資料"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   data = request.get_json()
+   user_id = session['user_id']
+   
+   user = User.query.get(user_id)
+   if user:
+       # 更新使用者資料
+       if data.get('email'):
+           # 檢查郵件是否已被使用
+           existing_user = User.query.filter_by(email=data['email']).first()
+           if existing_user and existing_user.id != user_id:
+               return jsonify({'success': False, 'message': '此電子郵件已被使用'})
+           user.email = data['email']
+       
+       if data.get('password'):
+           user.password_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+       
+       db.session.commit()
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到使用者'})
+
+@app.route('/update_child/<int:child_id>', methods=['POST'])
+def update_child(child_id):
+   """更新小孩資料"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   data = request.get_json()
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   
+   if child:
+       child.nickname = data.get('nickname', child.nickname)
+       child.age = int(data.get('age', child.age))
+       child.gender = data.get('gender', child.gender)
+       child.education_stage = data.get('education_stage', child.education_stage)
+       
+       db.session.commit()
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該小孩檔案'})
+
+@app.route('/delete_session/<int:session_id>', methods=['POST'])
+def delete_session(session_id):
+   """刪除單次學習記錄"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   # 驗證此學習記錄屬於當前使用者的小孩
+   study_session = StudySession.query.join(Child).filter(
+       StudySession.id == session_id,
+       Child.user_id == session['user_id']
+   ).first()
+   
+   if study_session:
+       db.session.delete(study_session)
+       db.session.commit()
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該學習記錄'})
+
+@app.route('/get_calendar_data')
+def get_calendar_data():
+   """獲取日曆數據"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return jsonify({'success': False})
+   
+   child_id = session['child_id']
+   study_sessions = StudySession.query.filter_by(child_id=child_id).all()
+   
+   calendar_data = []
+   for session in study_sessions:
+       calendar_data.append({
+           'date': session.start_time.strftime('%Y-%m-%d'),
+           'subject': SUBJECTS.get(session.subject, session.subject),
+           'duration': session.duration_minutes,
+           'attention': round(session.avg_attention * 100 / 3) if session.avg_attention else 0
+       })
+   
+   return jsonify({'success': True, 'data': calendar_data})
 
 @app.route('/logout')
 def logout():
