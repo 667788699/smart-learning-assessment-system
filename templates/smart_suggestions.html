@@ -256,84 +256,62 @@
 // 創建專注度趨勢圖
 const ctx = document.getElementById('focusTrendChart').getContext('2d');
 
-// 從實際數據生成圖表
-fetch('/get_calendar_data')
-    .then(response => response.json())
-    .then(result => {
-        if (result.success && result.data.length > 0) {
-            // 按日期聚合數據
-            const dailyData = {};
-            result.data.forEach(item => {
-                if (!dailyData[item.date]) {
-                    dailyData[item.date] = {
-                        attention_sum: 0,
-                        count: 0
-                    };
-                }
-                dailyData[item.date].attention_sum += item.attention;
-                dailyData[item.date].count += 1;
-            });
-            
-            // 轉換為圖表數據
-            const dates = Object.keys(dailyData).sort().slice(-30); // 最近30天
-            const averages = dates.map(date => 
-                Math.round(dailyData[date].attention_sum / dailyData[date].count)
-            );
-            
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates.map(date => {
-                        const d = new Date(date);
-                        return `${d.getMonth() + 1}/${d.getDate()}`;
-                    }),
-                    datasets: [{
-                        label: '專注度 (%)',
-                        data: averages,
-                        borderColor: '#3498DB',
-                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                        borderWidth: 3,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#3498DB',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            max: 100,
-                            ticks: {
-                                callback: function(value) {
-                                    return value + '%';
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return '專注度: ' + context.parsed.y + '%';
-                                }
-                            }
-                        }
+// 生成模擬數據（實際應從後端獲取）
+const labels = [];
+const data = [];
+for (let i = 0; i < 30; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() - (29 - i));
+    labels.push(date.toLocaleDateString('zh-TW', { month: 'short', day: 'numeric' }));
+    data.push(Math.floor(Math.random() * 30) + 70); // 70-100的隨機數
+}
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: '專注度 (%)',
+            data: data,
+            borderColor: '#3498DB',
+            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+            borderWidth: 3,
+            pointRadius: 4,
+            pointBackgroundColor: '#3498DB',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            tension: 0.4,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    callback: function(value) {
+                        return value + '%';
                     }
                 }
-            });
-        } else {
-            // 如果沒有數據，顯示提示
-            ctx.canvas.parentElement.innerHTML = '<p class="text-center text-muted my-5">尚無學習記錄</p>';
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return '專注度: ' + context.parsed.y + '%';
+                    }
+                }
+            }
         }
-    });
+    }
+});
 </script>
 
 <style>

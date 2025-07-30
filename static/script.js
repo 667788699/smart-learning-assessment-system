@@ -354,7 +354,7 @@ function startFaceDetection() {
 async function detectFaceAndEmotion() {
     try {
         // 將影片畫面繪製到 canvas
-        ctx.drawImage(video, 0, 0, 300, 300);
+        ctx.drawImage(video, 0, 0, 150, 150);
         
         let detectionResult;
         
@@ -392,80 +392,51 @@ async function performRealDetection() {
         // 獲取圖像數據
         const imageData = ctx.getImageData(0, 0, 300, 300);
         
-        // YOLOv8 臉部檢測
-        if (yoloModel && !yoloModel.simulated) {
-            // 預處理圖像為 ONNX 模型輸入
-            const input = new ort.Tensor('float32', new Float32Array(300 * 300 * 3), [1, 3, 300, 300]);
-            const feeds = { images: input };
-            const results = await yoloModel.run(feeds);
+        // YOLOv8 臉部檢測（簡化實現）
+        // 實際上需要預處理圖像並調用 ONNX 模型
+        const faces = []; // 這裡應該是 YOLOv8 的輸出
+        
+        if (faces.length === 0) {
+            return { error: '未檢測到人臉，請確保臉部在攝影機範圍內' };
+        }
+        
+        if (faces.length > 1) {
+            return { error: '檢測到多人，請確保只有一人在攝影機前' };
+        }
+        
+        // 擷取臉部區域並調整為 112x112
+        const faceCanvas = document.createElement('canvas');
+        faceCanvas.width = 112;
+        faceCanvas.height = 112;
+        const faceCtx = faceCanvas.getContext('2d');
+        
+        // 這裡應該根據 YOLOv8 的邊界框擷取臉部
+        faceCtx.drawImage(canvas, 0, 0, 300, 300, 0, 0, 112, 112);
+        
+        // TensorFlow 情緒預測
+        if (emotionModel && typeof tf !== 'undefined') {
+            const input = tf.browser.fromPixels(faceCanvas);
+            const normalized = input.div(255.0);
+            const batched = normalized.expandDims(0);
             
-            // 解析檢測結果
-            const boxes = results.output0.data;
-            const faces = [];
+            const predictions = await emotionModel.predict(batched).data();
+            const emotionIndex = predictions.indexOf(Math.max(...predictions));
+            const emotion = EMOTION_LABELS[emotionIndex];
+            const confidence = predictions[emotionIndex];
             
-            for (let i = 0; i < boxes.length; i += 6) {
-                if (boxes[i + 4] > 0.5) { // 信心度閾值
-                    faces.push({
-                        x: boxes[i],
-                        y: boxes[i + 1],
-                        width: boxes[i + 2] - boxes[i],
-                        height: boxes[i + 3] - boxes[i + 1],
-                        confidence: boxes[i + 4]
-                    });
-                }
-            }
+            // 根據情緒計算專注度
+            const attention = calculateAttentionFromEmotion(emotion, confidence);
             
-            if (faces.length === 0) {
-                return { error: '未檢測到人臉，請確保臉部在攝影機範圍內' };
-            }
+            // 清理張量
+            input.dispose();
+            normalized.dispose();
+            batched.dispose();
             
-            if (faces.length > 1) {
-                return { error: '檢測到多人，請確保只有一人在攝影機前' };
-            }
-            
-            // 擷取臉部區域
-            const face = faces[0];
-            const faceCanvas = document.createElement('canvas');
-            faceCanvas.width = 112;
-            faceCanvas.height = 112;
-            const faceCtx = faceCanvas.getContext('2d');
-            
-            // 從原始畫面擷取臉部區域並縮放到 112x112
-            faceCtx.drawImage(
-                canvas,
-                face.x, face.y, face.width, face.height,
-                0, 0, 112, 112
-            );
-            
-            // TensorFlow 情緒預測
-            if (emotionModel && typeof tf !== 'undefined') {
-                const input = tf.browser.fromPixels(faceCanvas);
-                const normalized = input.div(255.0);
-                const batched = normalized.expandDims(0);
-                
-                const predictions = await emotionModel.predict(batched).data();
-                
-                // 更新情緒條
-                updateEmotionBars(predictions);
-                
-                const emotionIndex = predictions.indexOf(Math.max(...predictions));
-                const emotion = EMOTION_LABELS[emotionIndex];
-                const confidence = predictions[emotionIndex];
-                
-                // 根據情緒計算專注度
-                const attention = calculateAttentionFromEmotion(emotion, confidence);
-                
-                // 清理張量
-                input.dispose();
-                normalized.dispose();
-                batched.dispose();
-                
-                return {
-                    emotion: emotion,
-                    attention: attention,
-                    confidence: confidence
-                };
-            }
+            return {
+                emotion: emotion,
+                attention: attention,
+                confidence: confidence
+            };
         }
         
         // 如果無法使用真實模型，返回模擬結果
@@ -475,22 +446,6 @@ async function performRealDetection() {
         console.error('真實檢測失敗，使用模擬:', error);
         return simulateDetection();
     }
-}
-
-// 更新情緒條
-function updateEmotionBars(predictions) {
-    const emotions = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
-    
-    emotions.forEach((emotion, index) => {
-        const percentage = Math.round(predictions[index] * 100);
-        const bar = document.getElementById(`${emotion}-bar`);
-        const value = document.getElementById(`${emotion}-value`);
-        
-        if (bar && value) {
-            bar.style.width = `${percentage}%`;
-            value.textContent = `${percentage}%`;
-        }
-    });
 }
 
 // 根據情緒計算專注度
@@ -540,44 +495,37 @@ function simulateDetection() {
     const emotionWeights = {
         'neutral': 0.4,
         'happy': 0.2,
-        'surprise': 0.1,
-        'sad': 0.1,
-        'fear': 0.1,
-        'angry': 0.05,
-        'disgust': 0.05
+        'focused': 0.25,
+        'confused': 0.1,
+        'tired': 0.03,
+        'excited': 0.02
     };
     
-    // 生成模擬的情緒預測值
-    const predictions = new Array(7).fill(0);
-    let remaining = 1.0;
+    let randomValue = Math.random();
+    let emotion = 'neutral';
     
-    EMOTION_LABELS.forEach((emotion, index) => {
-        const weight = emotionWeights[emotion] || 0.1;
-        const value = Math.random() * weight * remaining;
-        predictions[index] = value;
-        remaining -= value;
-    });
-    
-    // 正規化
-    const sum = predictions.reduce((a, b) => a + b, 0);
-    predictions.forEach((val, idx) => {
-        predictions[idx] = val / sum;
-    });
-    
-    // 更新情緒條
-    updateEmotionBars(predictions);
-    
-    const emotionIndex = predictions.indexOf(Math.max(...predictions));
-    const emotion = EMOTION_LABELS[emotionIndex];
-    const confidence = predictions[emotionIndex];
+    for (const [emo, weight] of Object.entries(emotionWeights)) {
+        randomValue -= weight;
+        if (randomValue <= 0) {
+            emotion = emo;
+            break;
+        }
+    }
     
     // 根據情緒計算專注度
-    const attention = calculateAttentionFromEmotion(emotion, confidence);
+    let attention;
+    if (emotion === 'focused' || emotion === 'neutral') {
+        attention = Math.random() < 0.7 ? 3 : 2;
+    } else if (emotion === 'happy' || emotion === 'excited') {
+        attention = Math.random() < 0.6 ? 2 : 3;
+    } else {
+        attention = Math.random() < 0.7 ? 1 : 2;
+    }
     
     return {
         emotion: emotion,
         attention: attention,
-        confidence: confidence
+        confidence: 0.7 + Math.random() * 0.3
     };
 }
 
@@ -594,11 +542,6 @@ function showDetectionWarning(message) {
         setTimeout(() => {
             warningElement.style.display = 'none';
         }, 3000);
-    }
-    
-    // 同時在小視窗顯示警告
-    if (miniWindow && !miniWindow.closed) {
-        showMiniAlert(message);
     }
 }
 
@@ -786,188 +729,9 @@ if (window.location.pathname.includes('/study/')) {
     const onnxScript = document.createElement('script');
     onnxScript.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js';
     document.head.appendChild(tfScript);
-}
-
-// 小視窗功能
-let miniWindow = null;
-let miniWindowInterval = null;
-
-function createMiniWindow() {
-    if (miniWindow && !miniWindow.closed) {
-        miniWindow.focus();
-        return;
-    }
-    
-    miniWindow = window.open('', 'miniMonitor', 'width=350,height=500,resizable=yes');
-    
-    const miniDoc = miniWindow.document;
-    miniDoc.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>學習監控視窗</title>
-            <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-            <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-            <style>
-                body { 
-                    padding: 10px; 
-                    background: #f8f9fa;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-                }
-                .video-mini {
-                    width: 100%;
-                    border: 2px solid #007bff;
-                    border-radius: 10px;
-                    margin-bottom: 10px;
-                }
-                .attention-mini {
-                    display: flex;
-                    justify-content: space-around;
-                    margin: 10px 0;
-                }
-                .attention-light-mini {
-                    width: 60px;
-                    height: 60px;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-weight: bold;
-                    color: white;
-                    opacity: 0.3;
-                }
-                .attention-light-mini.active {
-                    opacity: 1;
-                    box-shadow: 0 0 20px rgba(255,255,255,0.8);
-                }
-                .alert-mini {
-                    position: fixed;
-                    top: 10px;
-                    left: 10px;
-                    right: 10px;
-                    z-index: 1000;
-                }
-            </style>
-        </head>
-        <body>
-            <h5 class="text-center mb-3">
-                <i class="fas fa-video me-2"></i>學習監控
-            </h5>
-            <video id="miniVideo" autoplay muted class="video-mini"></video>
-            
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="text-center mb-3">專注度狀態</h6>
-                    <div class="attention-mini">
-                        <div class="attention-light-mini" style="background: #dc3545;" id="miniLow">
-                            <span>低</span>
-                        </div>
-                        <div class="attention-light-mini" style="background: #ffc107;" id="miniMedium">
-                            <span>中</span>
-                        </div>
-                        <div class="attention-light-mini" style="background: #28a745;" id="miniHigh">
-                            <span>高</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="miniAlert" class="alert alert-warning alert-mini" style="display: none;">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <span id="miniAlertText"></span>
-            </div>
-        </body>
-        </html>
-    `);
-    
-    miniDoc.close();
-    
-    // 設定小視窗的視訊
-    setTimeout(() => {
-        if (video && video.srcObject) {
-            const miniVideo = miniDoc.getElementById('miniVideo');
-            if (miniVideo) {
-                miniVideo.srcObject = video.srcObject;
-            }
-        }
-    }, 500);
-    
-    // 開始監控
-    startMiniWindowMonitoring();
-}
-
-function startMiniWindowMonitoring() {
-    if (miniWindowInterval) {
-        clearInterval(miniWindowInterval);
-    }
-    
-    miniWindowInterval = setInterval(() => {
-        if (!miniWindow || miniWindow.closed) {
-            clearInterval(miniWindowInterval);
-            return;
-        }
-        
-        // 更新專注度狀態
-        updateMiniWindowAttention();
-    }, 1000);
-}
-
-function updateMiniWindowAttention() {
-    if (!miniWindow || miniWindow.closed) return;
-    
-    const miniDoc = miniWindow.document;
-    const lastEmotion = emotionData[emotionData.length - 1];
-    
-    if (lastEmotion) {
-        // 更新專注度指示燈
-        ['miniLow', 'miniMedium', 'miniHigh'].forEach(id => {
-            const el = miniDoc.getElementById(id);
-            if (el) el.classList.remove('active');
-        });
-        
-        if (lastEmotion.attention === 1) {
-            const el = miniDoc.getElementById('miniLow');
-            if (el) el.classList.add('active');
-            showMiniAlert('專注度偏低，請集中注意力！');
-        } else if (lastEmotion.attention === 2) {
-            const el = miniDoc.getElementById('miniMedium');
-            if (el) el.classList.add('active');
-        } else if (lastEmotion.attention === 3) {
-            const el = miniDoc.getElementById('miniHigh');
-            if (el) el.classList.add('active');
-        }
-    }
-}
-
-function showMiniAlert(message) {
-    if (!miniWindow || miniWindow.closed) return;
-    
-    const miniDoc = miniWindow.document;
-    const alertEl = miniDoc.getElementById('miniAlert');
-    const alertText = miniDoc.getElementById('miniAlertText');
-    
-    if (alertEl && alertText) {
-        alertText.textContent = message;
-        alertEl.style.display = 'block';
-        
-        setTimeout(() => {
-            alertEl.style.display = 'none';
-        }, 3000);
-    }
-}
-
-// 監聽頁面離開事件
-window.addEventListener('beforeunload', function(e) {
-    if (isDetecting) {
-        e.preventDefault();
-        e.returnValue = '學習階段尚未結束，確定要離開嗎？';
-        
-        // 顯示小視窗
-        createMiniWindow();
-    }
-});d.appendChild(onnxScript);
+}d.appendChild(onnxScript);
     
     // 載入 TensorFlow.js
     const tfScript = document.createElement('script');
     tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js';
-    //document.hea
+    document.hea
