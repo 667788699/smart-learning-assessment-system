@@ -1,0 +1,43 @@
+基於目前的系統我對於整體的版面設計以及各種介面都很滿意，總體是很直覺的葉面，但需要調整的有很多項我一一跟你說: 
+
+1. 介面中的所有文字要確保他清晰可見
+2. 在首頁的數據分析以及智慧建議點級後需要有相應的頁面來呈現內容盡可能的利用視覺化的圖表來做，並在智慧建議需要根據不同的統計結果給予兒少建議
+3. 你要以家長或老師的腳色來思考，在註冊帳戶時是家長或老師建立帳號，在介面中應該要可以創立一個小孩專屬的學習紀錄，就像是Netflix
+   一樣，我可以用一個帳號但我在裡面會分成多個小孩的學習環境，並且，在創立一個小孩的學習環境時，要記錄此小孩的性別、年齡、暱稱、教育階段(國小、國中、高中)
+   後續就可以直接進入此小孩的學習環境，而這都應該是在登陸後，按下進入學習中心後要選擇哪一個小孩或是建立一個新的小孩，並且先限制四個好了後續在增加
+4. 在學習環境中介面我都覺得很好，但是應該要有數據分析跟智慧建議的圖示可以點擊進去，包含視覺化圖表以及個人化分析來做PDF檔的下載，不應該是看完影片就能下載PDF
+   而是我們透過歷史紀錄給予兒少個人化的分析，盡可能提出更多視覺化圖表
+5. 在學習檢測的部分，我要用的是yolov8的模型以及我自己用tensorflow訓練的情緒分類模型來做注意力的映射，目前的學習檢測畫面都很好，但需要知道的是
+   yolov8權重檔在static/yolov8n-face.onnx，
+
+而model的部分架構是def create_model(num_classes):
+    model = models.Sequential([
+        layers.Rescaling(1./255, input_shape=(112, 112, 3)),
+        layers.Conv2D(32, 3, activation='relu'),
+        layers.MaxPooling2D(),
+        layers.Conv2D(64, 3, activation='relu'),
+        layers.MaxPooling2D(),
+        layers.Conv2D(128, 3, activation='relu'),
+        layers.MaxPooling2D(),
+        layers.Flatten(),
+        layers.Dense(128, activation='relu'),
+        layers.Dropout(0.5),
+        layers.Dense(num_classes, activation='softmax')
+    ])
+
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+
+    model.summary()
+    return models
+ 並且她得輸入是112*112*3，權重檔是在models/emotion_model.h5，並且在擷取視訊鏡頭的畫面應該是從300*300來resize成112*112但要想辦法保留原始照片的可辨識性
+6. 在輸出PDF的部分，大部分的字都會是亂碼，你要解決，盡可能給予個人化的建議，並要參考兒少的性別、年齡、暱稱、教育階段(國小、國中、高中)來給予建議
+7. 專注度可以是以%數呈現
+8. 應該要有刪除此帳號或是小孩的功能，又或者是刪除學習歷程的功能
+9. 對於偵測臉部的部分目前的提是很好但是要確保yolov8有正確擷取臉部，不是亂跳警告說沒臉部或多張臉
+10. 分析報告注意是要從智慧建議中下載，不要再是上完課就可以直接下載
+11. 所以紀錄的資訊應該都要可以做reset
+12. 學習環境中的程式設計我要改成電腦科學
+
+達成我所有要求，並且是以我給你得程式碼進行擴充或修改，不是重寫一個，確保這點要做到!!!!

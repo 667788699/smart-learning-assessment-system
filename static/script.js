@@ -354,7 +354,7 @@ function startFaceDetection() {
 async function detectFaceAndEmotion() {
     try {
         // 將影片畫面繪製到 canvas
-        ctx.drawImage(video, 0, 0, 300, 300);
+        ctx.drawImage(video, 0, 0, 150, 150);
         
         let detectionResult;
         
