@@ -189,13 +189,16 @@
     border-radius: 50%;
 }
 </style>
+{% endblock %}
 
+{% block scripts %}
 <script>
 function validateAge(input) {
     const age = parseInt(input.value);
     if (age < 6 || age > 18) {
         input.classList.add('is-invalid');
-        input.value = age < 6 ? 6 : 18;
+        if (age < 6) input.value = 6;
+        if (age > 18) input.value = 18;
     } else {
         input.classList.remove('is-invalid');
     }
@@ -243,13 +246,7 @@ async function createChild() {
             alert(result.message || '建立失敗');
         }
     } catch (error) {
-        alert('建立失敗，請稍後再試');
-    }
-}result.child_id}`;
-        } else {
-            alert(result.message || '建立失敗');
-        }
-    } catch (error) {
+        console.error('Create child error:', error);
         alert('建立失敗，請稍後再試');
     }
 }
@@ -274,6 +271,7 @@ function deleteChild(childId, nickname) {
                 alert('刪除失敗');
             }
         } catch (error) {
+            console.error('Delete child error:', error);
             alert('刪除失敗，請稍後再試');
         }
     };
@@ -302,6 +300,7 @@ async function deleteAccount() {
             alert('刪除失敗');
         }
     } catch (error) {
+        console.error('Delete account error:', error);
         alert('刪除失敗，請稍後再試');
     }
 }

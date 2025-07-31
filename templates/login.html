@@ -54,3 +54,48 @@
     </div>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+// 登入表單處理
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: username,
+                password: password
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 登入成功，重定向到小孩選擇頁面
+            window.location.href = '/child_selection';
+        } else {
+            // 顯示錯誤訊息
+            showMessage(result.message || '登入失敗');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        showMessage('登入失敗，請稍後再試');
+    }
+});
+
+// 顯示訊息模態框
+function showMessage(message) {
+    document.getElementById('modalMessage').textContent = message;
+    const modal = new bootstrap.Modal(document.getElementById('messageModal'));
+    modal.show();
+}
+</script>
+{% endblock %}
