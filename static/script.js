@@ -14,21 +14,9 @@ let detectionCount = 0;
 let validDetections = 0;
 let noFaceWarningCount = 0;
 let multipleFaceWarningCount = 0;
-let isPaused = false;  // 新增暫停狀態變數
 
 // 情緒標籤對應
 const EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
-
-// 情緒計數器
-let emotionCounts = {
-    angry: 0,
-    disgust: 0,
-    fear: 0,
-    happy: 0,
-    neutral: 0,
-    sad: 0,
-    surprise: 0
-};
 
 // 頁面載入完成後初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -301,13 +289,6 @@ async function startStudySession() {
             document.getElementById('timeSettingCard').style.display = 'none';
             document.getElementById('statusCard').style.display = 'block';
             document.getElementById('statsCard').style.display = 'block';
-            document.getElementById('emotionCard').style.display = 'block';
-            
-            // 重置情緒計數
-            for (let emotion in emotionCounts) {
-                emotionCounts[emotion] = 0;
-            }
-            updateEmotionBars();
             
             // 開始計時器和檢測
             startTimer(duration * 60); // 轉換為秒
@@ -373,7 +354,7 @@ function startFaceDetection() {
 async function detectFaceAndEmotion() {
     try {
         // 將影片畫面繪製到 canvas
-        ctx.drawImage(video, 0, 0, 300, 300);
+        ctx.drawImage(video, 0, 0, 150, 150);
         
         let detectionResult;
         
@@ -410,151 +391,6 @@ async function performRealDetection() {
     try {
         // 獲取圖像數據
         const imageData = ctx.getImageData(0, 0, 300, 300);
-        
-        // 使用 ONNX Runtime 進行 YOLOv8 檢測
-        if (yoloModel && typeof ort !== 'undefined') {
-            // 預處理圖像為 YOLOv8 輸入格式
-            const input = preprocessImageForYOLO(imageData);
-            
-            try {
-                // 執行推理
-                const feeds = { images: input };
-                const results = await yoloModel.run(feeds);
-                
-                // 解析輸出獲取人臉邊界框
-                const faces = parseYOLOOutput(results);
-                
-                if (faces.length === 0) {
-                    noFaceWarningCount++;
-                    if (noFaceWarningCount > 3) {
-                        return { error: '未檢測到人臉，請確保臉部在攝影機範圍內' };
-                    }
-                    return simulateDetection(); // 如果偶爾檢測不到，使用模擬
-                }
-                
-                if (faces.length > 1) {
-                    multipleFaceWarningCount++;
-                    return { error: '檢測到多人，請確保只有一人在攝影機前' };
-                }
-                
-                // 重置警告計數
-                noFaceWarningCount = 0;
-                multipleFaceWarningCount = 0;
-                
-                // 擷取人臉區域
-                const face = faces[0];
-                const faceCanvas = document.createElement('canvas');
-                faceCanvas.width = 112;
-                faceCanvas.height = 112;
-                const faceCtx = faceCanvas.getContext('2d');
-                
-                // 根據邊界框擷取並縮放人臉
-                faceCtx.drawImage(
-                    canvas,
-                    face.x, face.y, face.width, face.height,
-                    0, 0, 112, 112
-                );
-                
-                // 使用 TensorFlow.js 進行情緒分類
-                if (emotionModel && typeof tf !== 'undefined') {
-                    const emotionInput = tf.browser.fromPixels(faceCanvas);
-                    const normalized = emotionInput.div(255.0);
-                    const batched = normalized.expandDims(0);
-                    
-                    const predictions = await emotionModel.predict(batched).data();
-                    const emotionIndex = predictions.indexOf(Math.max(...predictions));
-                    const emotion = EMOTION_LABELS[emotionIndex];
-                    const confidence = predictions[emotionIndex];
-                    
-                    // 根據情緒計算專注度
-                    const attention = calculateAttentionFromEmotion(emotion, confidence);
-                    
-                    // 清理張量
-                    emotionInput.dispose();
-                    normalized.dispose();
-                    batched.dispose();
-                    
-                    return {
-                        emotion: emotion,
-                        attention: attention,
-                        confidence: confidence
-                    };
-                }
-            } catch (modelError) {
-                console.error('模型推理錯誤:', modelError);
-                return simulateDetection();
-            }
-        }
-        
-        // 如果無法使用真實模型，返回模擬結果
-        return simulateDetection();
-        
-    } catch (error) {
-        console.error('真實檢測失敗，使用模擬:', error);
-        return simulateDetection();
-    }
-}
-
-// 預處理圖像為 YOLOv8 格式
-function preprocessImageForYOLO(imageData) {
-    // YOLOv8 需要 640x640 RGB 圖像
-    const canvas = document.createElement('canvas');
-    canvas.width = 640;
-    canvas.height = 640;
-    const ctx = canvas.getContext('2d');
-    
-    // 將 imageData 繪製到 640x640 canvas
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = 300;
-    tempCanvas.height = 300;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.putImageData(imageData, 0, 0);
-    
-    ctx.drawImage(tempCanvas, 0, 0, 640, 640);
-    
-    // 獲取像素數據並正規化
-    const pixels = ctx.getImageData(0, 0, 640, 640);
-    const red = [], green = [], blue = [];
-    
-    for (let i = 0; i < pixels.data.length; i += 4) {
-        red.push(pixels.data[i] / 255.0);
-        green.push(pixels.data[i + 1] / 255.0);
-        blue.push(pixels.data[i + 2] / 255.0);
-    }
-    
-    // 創建 ONNX tensor
-    const input = new ort.Tensor('float32', [...red, ...green, ...blue], [1, 3, 640, 640]);
-    return input;
-}
-
-// 解析 YOLOv8 輸出
-function parseYOLOOutput(outputs) {
-    // YOLOv8 輸出格式解析
-    const boxes = [];
-    const output = outputs.output0 || outputs.values().next().value;
-    
-    if (!output) return boxes;
-    
-    // 這裡需要根據實際的 YOLOv8 輸出格式調整
-    // 簡化示例：假設輸出包含邊界框和置信度
-    const data = output.data;
-    const stride = 85; // 4 (box) + 1 (confidence) + 80 (classes)
-    
-    for (let i = 0; i < data.length; i += stride) {
-        const confidence = data[i + 4];
-        if (confidence > 0.5) {
-            boxes.push({
-                x: data[i] * 300 / 640,
-                y: data[i + 1] * 300 / 640,
-                width: data[i + 2] * 300 / 640,
-                height: data[i + 3] * 300 / 640,
-                confidence: confidence
-            });
-        }
-    }
-    
-    return boxes;
-}Data(0, 0, 300, 300);
         
         // YOLOv8 臉部檢測（簡化實現）
         // 實際上需要預處理圖像並調用 ONNX 模型
@@ -659,11 +495,10 @@ function simulateDetection() {
     const emotionWeights = {
         'neutral': 0.4,
         'happy': 0.2,
-        'surprised': 0.15,
-        'sad': 0.1,
-        'angry': 0.05,
-        'fear': 0.05,
-        'disgust': 0.05
+        'focused': 0.25,
+        'confused': 0.1,
+        'tired': 0.03,
+        'excited': 0.02
     };
     
     let randomValue = Math.random();
@@ -679,9 +514,9 @@ function simulateDetection() {
     
     // 根據情緒計算專注度
     let attention;
-    if (emotion === 'neutral' || emotion === 'happy') {
+    if (emotion === 'focused' || emotion === 'neutral') {
         attention = Math.random() < 0.7 ? 3 : 2;
-    } else if (emotion === 'surprised') {
+    } else if (emotion === 'happy' || emotion === 'excited') {
         attention = Math.random() < 0.6 ? 2 : 3;
     } else {
         attention = Math.random() < 0.7 ? 1 : 2;
@@ -741,30 +576,6 @@ function updateAttentionIndicator(attentionLevel) {
     }
 }
 
-// 更新情緒條形圖
-function updateEmotionBars() {
-    const total = Object.values(emotionCounts).reduce((a, b) => a + b, 0) || 1;
-    
-    const emotionMap = {
-        angry: 'angerBar',
-        disgust: 'disgustBar',
-        fear: 'fearBar',
-        happy: 'happyBar',
-        neutral: 'neutralBar',
-        sad: 'sadBar',
-        surprise: 'surpriseBar'
-    };
-    
-    for (const [emotion, barId] of Object.entries(emotionMap)) {
-        const percentage = Math.round((emotionCounts[emotion] / total) * 100);
-        const bar = document.getElementById(barId);
-        if (bar) {
-            bar.style.width = percentage + '%';
-            bar.textContent = percentage + '%';
-        }
-    }
-}
-
 // 記錄情緒數據
 async function recordEmotionData(detectionResult) {
     emotionData.push({
@@ -773,12 +584,6 @@ async function recordEmotionData(detectionResult) {
         attention: detectionResult.attention,
         confidence: detectionResult.confidence
     });
-    
-    // 更新情緒計數
-    if (detectionResult.emotion in emotionCounts) {
-        emotionCounts[detectionResult.emotion]++;
-        updateEmotionBars();
-    }
     
     try {
         await fetch('/record_emotion', {
@@ -820,39 +625,41 @@ function updateStatistics() {
 
 // 暫停學習
 function pauseStudySession() {
-    isPaused = true;
-    isDetecting = false;
-    clearInterval(studyTimer);
-    clearInterval(detectionInterval);
-    
-    const pauseButton = document.getElementById('pauseButton');
-    if (pauseButton) {
-        pauseButton.innerHTML = '<i class="fas fa-play me-2"></i>繼續';
-        pauseButton.onclick = resumeStudySession;
+    if (isDetecting) {
+        isDetecting = false;
+        clearInterval(studyTimer);
+        clearInterval(detectionInterval);
+        
+        const pauseButton = document.getElementById('pauseButton');
+        if (pauseButton) {
+            pauseButton.innerHTML = '<i class="fas fa-play me-2"></i>繼續';
+            pauseButton.onclick = resumeStudySession;
+        }
     }
 }
 
 // 繼續學習
 function resumeStudySession() {
-    isPaused = false;
-    isDetecting = true;
-    
-    // 重新開始檢測
-    startFaceDetection();
-    
-    // 重新計算剩餘時間並開始計時
-    const currentTime = new Date();
-    const elapsedMinutes = (currentTime - startTime) / (1000 * 60);
-    const remainingMinutes = totalDuration - elapsedMinutes;
-    
-    if (remainingMinutes > 0) {
-        startTimer(Math.floor(remainingMinutes * 60));
-    }
-    
-    const pauseButton = document.getElementById('pauseButton');
-    if (pauseButton) {
-        pauseButton.innerHTML = '<i class="fas fa-pause me-2"></i>暫停';
-        pauseButton.onclick = pauseStudySession;
+    if (!isDetecting) {
+        isDetecting = true;
+        
+        // 重新開始檢測
+        startFaceDetection();
+        
+        // 重新計算剩餘時間並開始計時
+        const currentTime = new Date();
+        const elapsedMinutes = (currentTime - startTime) / (1000 * 60);
+        const remainingMinutes = totalDuration - elapsedMinutes;
+        
+        if (remainingMinutes > 0) {
+            startTimer(Math.floor(remainingMinutes * 60));
+        }
+        
+        const pauseButton = document.getElementById('pauseButton');
+        if (pauseButton) {
+            pauseButton.innerHTML = '<i class="fas fa-pause me-2"></i>暫停';
+            pauseButton.onclick = pauseStudySession;
+        }
     }
 }
 

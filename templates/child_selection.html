@@ -105,11 +105,7 @@
                     
                     <div class="mb-3">
                         <label for="age" class="form-label">年齡</label>
-                        <input type="number" class="form-control" id="age" min="6" max="18" required 
-                               oninput="validateAge(this)">
-                        <div class="invalid-feedback">
-                            年齡必須在6-18歲之間
-                        </div>
+                        <input type="number" class="form-control" id="age" min="6" max="18" required>
                     </div>
                     
                     <div class="mb-3">
@@ -189,21 +185,8 @@
     border-radius: 50%;
 }
 </style>
-{% endblock %}
 
-{% block scripts %}
 <script>
-function validateAge(input) {
-    const age = parseInt(input.value);
-    if (age < 6 || age > 18) {
-        input.classList.add('is-invalid');
-        if (age < 6) input.value = 6;
-        if (age > 18) input.value = 18;
-    } else {
-        input.classList.remove('is-invalid');
-    }
-}
-
 function selectChild(childId) {
     window.location.href = `/select_child/${childId}`;
 }
@@ -211,16 +194,11 @@ function selectChild(childId) {
 async function createChild() {
     const nickname = document.getElementById('nickname').value;
     const gender = document.querySelector('input[name="gender"]:checked').value;
-    const age = parseInt(document.getElementById('age').value);
+    const age = document.getElementById('age').value;
     const education_stage = document.getElementById('education_stage').value;
     
     if (!nickname || !age || !education_stage) {
         alert('請填寫所有欄位');
-        return;
-    }
-    
-    if (age < 6 || age > 18) {
-        alert('年齡必須在6-18歲之間');
         return;
     }
     
@@ -246,7 +224,6 @@ async function createChild() {
             alert(result.message || '建立失敗');
         }
     } catch (error) {
-        console.error('Create child error:', error);
         alert('建立失敗，請稍後再試');
     }
 }
@@ -271,7 +248,6 @@ function deleteChild(childId, nickname) {
                 alert('刪除失敗');
             }
         } catch (error) {
-            console.error('Delete child error:', error);
             alert('刪除失敗，請稍後再試');
         }
     };
@@ -300,7 +276,6 @@ async function deleteAccount() {
             alert('刪除失敗');
         }
     } catch (error) {
-        console.error('Delete account error:', error);
         alert('刪除失敗，請稍後再試');
     }
 }
