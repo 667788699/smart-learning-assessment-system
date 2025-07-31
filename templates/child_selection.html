@@ -105,7 +105,11 @@
                     
                     <div class="mb-3">
                         <label for="age" class="form-label">年齡</label>
-                        <input type="number" class="form-control" id="age" min="6" max="18" required>
+                        <input type="number" class="form-control" id="age" min="6" max="18" required 
+                               oninput="validateAge(this)">
+                        <div class="invalid-feedback">
+                            年齡必須在6-18歲之間
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -187,6 +191,16 @@
 </style>
 
 <script>
+function validateAge(input) {
+    const age = parseInt(input.value);
+    if (age < 6 || age > 18) {
+        input.classList.add('is-invalid');
+        input.value = age < 6 ? 6 : 18;
+    } else {
+        input.classList.remove('is-invalid');
+    }
+}
+
 function selectChild(childId) {
     window.location.href = `/select_child/${childId}`;
 }
@@ -194,11 +208,16 @@ function selectChild(childId) {
 async function createChild() {
     const nickname = document.getElementById('nickname').value;
     const gender = document.querySelector('input[name="gender"]:checked').value;
-    const age = document.getElementById('age').value;
+    const age = parseInt(document.getElementById('age').value);
     const education_stage = document.getElementById('education_stage').value;
     
     if (!nickname || !age || !education_stage) {
         alert('請填寫所有欄位');
+        return;
+    }
+    
+    if (age < 6 || age > 18) {
+        alert('年齡必須在6-18歲之間');
         return;
     }
     
@@ -220,6 +239,13 @@ async function createChild() {
         
         if (result.success) {
             window.location.href = `/select_child/${result.child_id}`;
+        } else {
+            alert(result.message || '建立失敗');
+        }
+    } catch (error) {
+        alert('建立失敗，請稍後再試');
+    }
+}result.child_id}`;
         } else {
             alert(result.message || '建立失敗');
         }

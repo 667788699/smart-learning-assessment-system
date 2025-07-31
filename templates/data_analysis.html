@@ -143,6 +143,7 @@
                                     <th>學習時長</th>
                                     <th>平均專注度</th>
                                     <th>狀態</th>
+                                    <th>操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -178,10 +179,43 @@
                                             <span class="badge bg-warning">進行中</span>
                                         {% endif %}
                                     </td>
+                                    <td>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteSession({{ session.id }})">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 日曆檢視 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar-alt text-primary me-2"></i>
+                        學習日曆
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="calendar-container">
+                        <div class="calendar-header">
+                            <button class="btn btn-sm btn-outline-primary" onclick="changeMonth(-1)">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <h6 id="currentMonth" class="mb-0"></h6>
+                            <button class="btn btn-sm btn-outline-primary" onclick="changeMonth(1)">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
                     </div>
                 </div>
             </div>
@@ -378,6 +412,122 @@ async function confirmReset() {
         alert('重置失敗，請稍後再試');
     }
 }
+
+// 刪除單一學習記錄
+async function deleteSession(sessionId) {
+    if (!confirm('確定要刪除這筆學習記錄嗎？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/delete_session/${sessionId}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            window.location.reload();
+        } else {
+            alert('刪除失敗');
+        }
+    } catch (error) {
+        alert('刪除失敗，請稍後再試');
+    }
+}
+
+// 日曆功能
+let currentDate = new Date();
+const studySessions = {{ study_sessions | tojson }};
+
+function renderCalendar() {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // 更新月份標題
+    const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', 
+                       '七月', '八月', '九月', '十月', '十一月', '十二月'];
+    document.getElementById('currentMonth').textContent = `${year}年 ${monthNames[month]}`;
+    
+    // 清空日曆
+    const calendarGrid = document.getElementById('calendarGrid');
+    calendarGrid.innerHTML = '';
+    
+    // 添加星期標題
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+    weekDays.forEach(day => {
+        const dayHeader = document.createElement('div');
+        dayHeader.className = 'calendar-day text-center fw-bold';
+        dayHeader.textContent = day;
+        calendarGrid.appendChild(dayHeader);
+    });
+    
+    // 獲取月份第一天和最後一天
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startPadding = firstDay.getDay();
+    
+    // 填充空白日期
+    for (let i = 0; i < startPadding; i++) {
+        const emptyDay = document.createElement('div');
+        emptyDay.className = 'calendar-day';
+        calendarGrid.appendChild(emptyDay);
+    }
+    
+    // 填充日期
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+        const dayElement = document.createElement('div');
+        dayElement.className = 'calendar-day';
+        
+        const dayNumber = document.createElement('div');
+        dayNumber.className = 'day-number';
+        dayNumber.textContent = day;
+        dayElement.appendChild(dayNumber);
+        
+        // 檢查是否有學習記錄
+        const currentDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const sessionsOnDay = studySessions.filter(session => {
+            const sessionDate = session.start_time.split('T')[0];
+            return sessionDate === currentDateStr;
+        });
+        
+        if (sessionsOnDay.length > 0) {
+            dayElement.classList.add('has-data');
+            const indicator = document.createElement('div');
+            indicator.className = 'study-indicator';
+            dayElement.appendChild(indicator);
+            
+            // 點擊顯示當天學習詳情
+            dayElement.onclick = () => showDayDetails(currentDateStr, sessionsOnDay);
+        }
+        
+        calendarGrid.appendChild(dayElement);
+    }
+}
+
+function changeMonth(direction) {
+    currentDate.setMonth(currentDate.getMonth() + direction);
+    renderCalendar();
+}
+
+function showDayDetails(date, sessions) {
+    let details = `${date} 的學習記錄：\n\n`;
+    sessions.forEach(session => {
+        const subject = {'math': '數學', 'science': '自然科學', 'language': '語言文學', 
+                        'social': '社會科學', 'art': '藝術創作', 'cs': '電腦科學'}[session.subject];
+        const attention = session.avg_attention ? 
+            Math.round(session.avg_attention * 100 / 3) + '%' : '未記錄';
+        details += `科目：${subject}\n`;
+        details += `時長：${session.duration_minutes} 分鐘\n`;
+        details += `專注度：${attention}\n\n`;
+    });
+    alert(details);
+}
+
+// 初始化日曆
+document.addEventListener('DOMContentLoaded', function() {
+    renderCalendar();
+});
 </script>
 
 <style>
