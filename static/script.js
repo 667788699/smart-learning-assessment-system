@@ -14,6 +14,7 @@ let detectionCount = 0;
 let validDetections = 0;
 let noFaceWarningCount = 0;
 let multipleFaceWarningCount = 0;
+let faceDetectionModel = null;
 
 // 情緒標籤對應
 const EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
@@ -37,6 +38,19 @@ function initRegisterPage() {
     const form = document.getElementById('registerForm');
     if (form) {
         form.addEventListener('submit', handleRegister);
+    }
+    
+    // 年齡驗證
+    const ageInput = document.getElementById('age');
+    if (ageInput) {
+        ageInput.addEventListener('input', function() {
+            const age = parseInt(this.value);
+            if (age < 6) {
+                this.value = 6;
+            } else if (age > 18) {
+                this.value = 18;
+            }
+        });
     }
 }
 
@@ -63,6 +77,13 @@ async function handleRegister(event) {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
     const confirmPassword = document.getElementById('confirmPassword').value;
+    const age = parseInt(document.getElementById('age').value);
+    
+    // 驗證年齡
+    if (age < 6 || age > 18) {
+        showMessage('年齡必須在6-18歲之間');
+        return;
+    }
     
     if (password !== confirmPassword) {
         showMessage('密碼確認不一致');
@@ -206,6 +227,28 @@ function initStudyControls() {
     if (generateReportBtn) {
         generateReportBtn.addEventListener('click', generateReport);
     }
+    
+    // 年齡驗證小孩創建表單
+    const ageInput = document.getElementById('age');
+    if (ageInput) {
+        ageInput.addEventListener('input', function() {
+            const age = parseInt(this.value);
+            if (age < 6) {
+                this.value = 6;
+            } else if (age > 18) {
+                this.value = 18;
+            }
+        });
+        
+        ageInput.addEventListener('blur', function() {
+            const age = parseInt(this.value);
+            if (isNaN(age) || age < 6) {
+                this.value = 6;
+            } else if (age > 18) {
+                this.value = 18;
+            }
+        });
+    }
 }
 
 // 載入 AI 模型
@@ -213,29 +256,45 @@ async function loadModels() {
     try {
         updateCameraStatus('正在載入 AI 模型...', 'info');
         
-        // 載入 ONNX Runtime
-        if (typeof ort !== 'undefined') {
-            // 載入 YOLOv8 臉部偵測模型
-            const yoloSession = await ort.InferenceSession.create('/static/yolov8n-face.onnx');
-            yoloModel = yoloSession;
-            console.log('YOLOv8 模型載入成功');
-        } else {
-            console.warn('ONNX Runtime 未載入，使用備用方案');
+        // 載入 MediaPipe Face Detection
+        if (typeof FaceDetection !== 'undefined') {
+            faceDetectionModel = new FaceDetection({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+                }
+            });
+            
+            faceDetectionModel.setOptions({
+                model: 'short',
+                minDetectionConfidence: 0.5,
+            });
+            
+            faceDetectionModel.onResults(onFaceDetectionResults);
+            console.log('MediaPipe Face Detection 模型載入成功');
         }
         
         // 載入 TensorFlow.js
         if (typeof tf !== 'undefined') {
-            // 載入情緒分類模型
-            emotionModel = await tf.loadLayersModel('/models/emotion_model.h5');
-            console.log('情緒分類模型載入成功');
+            try {
+                // 嘗試載入情緒分類模型
+                emotionModel = await tf.loadLayersModel('/static/models/emotion_model.json');
+                console.log('情緒分類模型載入成功');
+            } catch (error) {
+                console.warn('無法載入情緒分類模型，使用模擬模式');
+                emotionModel = { loaded: true, simulated: true };
+            }
         } else {
             console.warn('TensorFlow.js 未載入，使用備用方案');
+            emotionModel = { loaded: true, simulated: true };
         }
         
         // 如果無法載入真實模型，使用模擬模式
-        if (!yoloModel || !emotionModel) {
-            console.log('使用模擬模式進行臉部和情緒檢測');
-            yoloModel = { loaded: true, simulated: true };
+        if (!faceDetectionModel) {
+            console.log('使用模擬模式進行臉部檢測');
+            faceDetectionModel = { loaded: true, simulated: true };
+        }
+        
+        if (!emotionModel) {
             emotionModel = { loaded: true, simulated: true };
         }
         
@@ -244,17 +303,24 @@ async function loadModels() {
     } catch (error) {
         console.error('模型載入失敗:', error);
         // 使用模擬模式
-        yoloModel = { loaded: true, simulated: true };
+        faceDetectionModel = { loaded: true, simulated: true };
         emotionModel = { loaded: true, simulated: true };
         updateCameraStatus('使用模擬 AI 模型', 'warning');
     }
+}
+
+// MediaPipe 人臉檢測結果處理
+let lastFaceDetectionResult = null;
+
+function onFaceDetectionResults(results) {
+    lastFaceDetectionResult = results;
 }
 
 // 開始學習階段
 async function startStudySession() {
     const duration = parseInt(document.getElementById('studyDuration').value);
     
-    if (!yoloModel || !emotionModel) {
+    if (!faceDetectionModel || !emotionModel) {
         showMessage('AI 模型尚未就緒，請稍候');
         return;
     }
@@ -347,22 +413,24 @@ function startFaceDetection() {
         if (isDetecting && video && canvas) {
             detectFaceAndEmotion();
         }
-    }, 3000); // 每3秒檢測一次
+    }, 2000); // 每2秒檢測一次
 }
 
 // 人臉檢測和情緒辨識
 async function detectFaceAndEmotion() {
     try {
+        detectionCount++;
+        
         // 將影片畫面繪製到 canvas
-        ctx.drawImage(video, 0, 0, 150, 150);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
         let detectionResult;
         
-        // 檢查是否使用模擬模式
-        if (yoloModel.simulated || emotionModel.simulated) {
-            detectionResult = simulateDetection();
+        // 檢查是否使用真實的人臉檢測
+        if (faceDetectionModel && !faceDetectionModel.simulated) {
+            detectionResult = await performRealFaceDetection();
         } else {
-            detectionResult = await performRealDetection();
+            detectionResult = await performEnhancedSimulation();
         }
         
         if (detectionResult.error) {
@@ -371,6 +439,7 @@ async function detectFaceAndEmotion() {
         }
         
         hideDetectionWarning();
+        validDetections++;
         
         // 更新專注度指示器
         updateAttentionIndicator(detectionResult.attention);
@@ -386,35 +455,85 @@ async function detectFaceAndEmotion() {
     }
 }
 
-// 執行真實的模型檢測
-async function performRealDetection() {
+// 執行真實的人臉檢測
+async function performRealFaceDetection() {
     try {
-        // 獲取圖像數據
-        const imageData = ctx.getImageData(0, 0, 300, 300);
-        
-        // YOLOv8 臉部檢測（簡化實現）
-        // 實際上需要預處理圖像並調用 ONNX 模型
-        const faces = []; // 這裡應該是 YOLOv8 的輸出
-        
-        if (faces.length === 0) {
-            return { error: '未檢測到人臉，請確保臉部在攝影機範圍內' };
+        // 使用 MediaPipe 進行人臉檢測
+        if (faceDetectionModel && typeof faceDetectionModel.send === 'function') {
+            await faceDetectionModel.send({image: video});
+            
+            // 等待檢測結果
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            if (lastFaceDetectionResult) {
+                const faces = lastFaceDetectionResult.detections;
+                
+                if (faces.length === 0) {
+                    noFaceWarningCount++;
+                    if (noFaceWarningCount >= 3) {
+                        return { error: '未檢測到人臉，請確保臉部在攝影機範圍內並面向攝影機' };
+                    }
+                }
+                
+                if (faces.length > 1) {
+                    multipleFaceWarningCount++;
+                    if (multipleFaceWarningCount >= 2) {
+                        return { error: '檢測到多人，請確保只有一人在攝影機前' };
+                    }
+                }
+                
+                if (faces.length === 1) {
+                    // 重置警告計數
+                    noFaceWarningCount = 0;
+                    multipleFaceWarningCount = 0;
+                    
+                    // 執行情緒檢測
+                    const emotion = await performEmotionDetection(faces[0]);
+                    const attention = calculateAttentionFromEmotion(emotion.emotion, emotion.confidence);
+                    
+                    return {
+                        emotion: emotion.emotion,
+                        attention: attention,
+                        confidence: emotion.confidence
+                    };
+                }
+            }
         }
         
-        if (faces.length > 1) {
-            return { error: '檢測到多人，請確保只有一人在攝影機前' };
-        }
+        // 如果無法使用真實檢測，回退到增強模擬
+        return await performEnhancedSimulation();
         
-        // 擷取臉部區域並調整為 112x112
-        const faceCanvas = document.createElement('canvas');
-        faceCanvas.width = 112;
-        faceCanvas.height = 112;
-        const faceCtx = faceCanvas.getContext('2d');
-        
-        // 這裡應該根據 YOLOv8 的邊界框擷取臉部
-        faceCtx.drawImage(canvas, 0, 0, 300, 300, 0, 0, 112, 112);
-        
-        // TensorFlow 情緒預測
-        if (emotionModel && typeof tf !== 'undefined') {
+    } catch (error) {
+        console.error('真實人臉檢測失敗:', error);
+        return await performEnhancedSimulation();
+    }
+}
+
+// 執行情緒檢測
+async function performEmotionDetection(face) {
+    try {
+        if (emotionModel && !emotionModel.simulated && typeof tf !== 'undefined') {
+            // 從 face 中提取臉部區域
+            const faceCanvas = document.createElement('canvas');
+            faceCanvas.width = 112;
+            faceCanvas.height = 112;
+            const faceCtx = faceCanvas.getContext('2d');
+            
+            // 根據檢測到的臉部邊界框繪製
+            const bbox = face.boundingBox;
+            const x = bbox.xCenter - bbox.width / 2;
+            const y = bbox.yCenter - bbox.height / 2;
+            
+            faceCtx.drawImage(
+                video,
+                x * video.videoWidth,
+                y * video.videoHeight,
+                bbox.width * video.videoWidth,
+                bbox.height * video.videoHeight,
+                0, 0, 112, 112
+            );
+            
+            // TensorFlow 情緒預測
             const input = tf.browser.fromPixels(faceCanvas);
             const normalized = input.div(255.0);
             const batched = normalized.expandDims(0);
@@ -424,81 +543,112 @@ async function performRealDetection() {
             const emotion = EMOTION_LABELS[emotionIndex];
             const confidence = predictions[emotionIndex];
             
-            // 根據情緒計算專注度
-            const attention = calculateAttentionFromEmotion(emotion, confidence);
-            
             // 清理張量
             input.dispose();
             normalized.dispose();
             batched.dispose();
             
-            return {
-                emotion: emotion,
-                attention: attention,
-                confidence: confidence
-            };
+            return { emotion, confidence };
         }
-        
-        // 如果無法使用真實模型，返回模擬結果
-        return simulateDetection();
-        
     } catch (error) {
-        console.error('真實檢測失敗，使用模擬:', error);
-        return simulateDetection();
-    }
-}
-
-// 根據情緒計算專注度
-function calculateAttentionFromEmotion(emotion, confidence) {
-    const attentionMap = {
-        'neutral': 3,
-        'happy': 2,
-        'surprise': 2,
-        'fear': 1,
-        'sad': 1,
-        'angry': 1,
-        'disgust': 1
-    };
-    
-    let baseAttention = attentionMap[emotion] || 2;
-    
-    // 根據信心度調整
-    if (confidence < 0.5) {
-        baseAttention = Math.max(1, baseAttention - 1);
+        console.error('情緒檢測失敗:', error);
     }
     
-    return baseAttention;
+    // 回退到模擬情緒檢測
+    return simulateEmotion();
 }
 
-// 模擬檢測結果
-function simulateDetection() {
-    detectionCount++;
+// 增強版模擬檢測（更真實的人臉檢測行為）
+async function performEnhancedSimulation() {
+    // 使用簡單的像素分析來模擬人臉檢測
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imageData.data;
     
-    // 減少錯誤頻率，提供更穩定的體驗
+    // 計算圖像中心區域的亮度變化（簡單的人臉存在檢測）
+    let centerBrightness = 0;
+    let edgeBrightness = 0;
+    let centerPixels = 0;
+    let edgePixels = 0;
+    
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const faceRadius = Math.min(canvas.width, canvas.height) / 6;
+    
+    for (let y = 0; y < canvas.height; y += 4) {
+        for (let x = 0; x < canvas.width; x += 4) {
+            const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+            const pixelIndex = (y * canvas.width + x) * 4;
+            const brightness = (pixels[pixelIndex] + pixels[pixelIndex + 1] + pixels[pixelIndex + 2]) / 3;
+            
+            if (distance < faceRadius) {
+                centerBrightness += brightness;
+                centerPixels++;
+            } else if (distance > faceRadius * 2) {
+                edgeBrightness += brightness;
+                edgePixels++;
+            }
+        }
+    }
+    
+    const avgCenterBrightness = centerBrightness / centerPixels;
+    const avgEdgeBrightness = edgeBrightness / edgePixels;
+    const contrast = Math.abs(avgCenterBrightness - avgEdgeBrightness);
+    
+    // 檢測多人的簡單方法：檢查是否有多個亮度區域
+    let brightRegions = 0;
+    for (let y = 0; y < canvas.height; y += 20) {
+        for (let x = 0; x < canvas.width; x += 20) {
+            const pixelIndex = (y * canvas.width + x) * 4;
+            const brightness = (pixels[pixelIndex] + pixels[pixelIndex + 1] + pixels[pixelIndex + 2]) / 3;
+            if (brightness > avgCenterBrightness + 20) {
+                brightRegions++;
+            }
+        }
+    }
+    
+    // 根據圖像分析結果決定檢測結果
     const rand = Math.random();
     
-    // 降低無臉警告的頻率
-    if (rand < 0.02 && noFaceWarningCount < 3) {
+    // 如果對比度太低，可能沒有人臉
+    if (contrast < 15 && rand < 0.3) {
         noFaceWarningCount++;
-        return { error: '未檢測到人臉，請確保臉部在攝影機範圍內' };
+        if (noFaceWarningCount >= 2) {
+            return { error: '未檢測到人臉，請確保臉部在攝影機範圍內並面向攝影機' };
+        }
     }
     
-    // 降低多人警告的頻率
-    if (rand < 0.01 && multipleFaceWarningCount < 2) {
+    // 如果有太多亮區域，可能有多人
+    if (brightRegions > 8 && rand < 0.15) {
         multipleFaceWarningCount++;
-        return { error: '檢測到多人，請確保只有一人在攝影機前' };
+        if (multipleFaceWarningCount >= 1) {
+            return { error: '檢測到多人，請確保只有一人在攝影機前' };
+        }
     }
     
-    validDetections++;
+    // 正常情況下的檢測
+    noFaceWarningCount = Math.max(0, noFaceWarningCount - 0.5);
+    multipleFaceWarningCount = Math.max(0, multipleFaceWarningCount - 0.5);
     
+    const emotion = simulateEmotion();
+    const attention = calculateAttentionFromEmotion(emotion.emotion, emotion.confidence);
+    
+    return {
+        emotion: emotion.emotion,
+        attention: attention,
+        confidence: emotion.confidence
+    };
+}
+
+// 模擬情緒檢測
+function simulateEmotion() {
     // 模擬更真實的情緒分布
     const emotionWeights = {
-        'neutral': 0.4,
-        'happy': 0.2,
+        'neutral': 0.45,
+        'happy': 0.15,
         'focused': 0.25,
-        'confused': 0.1,
-        'tired': 0.03,
-        'excited': 0.02
+        'confused': 0.08,
+        'tired': 0.04,
+        'surprised': 0.03
     };
     
     let randomValue = Math.random();
@@ -512,21 +662,33 @@ function simulateDetection() {
         }
     }
     
-    // 根據情緒計算專注度
-    let attention;
-    if (emotion === 'focused' || emotion === 'neutral') {
-        attention = Math.random() < 0.7 ? 3 : 2;
-    } else if (emotion === 'happy' || emotion === 'excited') {
-        attention = Math.random() < 0.6 ? 2 : 3;
-    } else {
-        attention = Math.random() < 0.7 ? 1 : 2;
+    const confidence = 0.6 + Math.random() * 0.35;
+    return { emotion, confidence };
+}
+
+// 根據情緒計算專注度
+function calculateAttentionFromEmotion(emotion, confidence) {
+    const attentionMap = {
+        'neutral': 3,
+        'focused': 3,
+        'happy': 2,
+        'surprised': 2,
+        'confused': 1,
+        'tired': 1,
+        'angry': 1,
+        'sad': 1
+    };
+    
+    let baseAttention = attentionMap[emotion] || 2;
+    
+    // 根據信心度調整
+    if (confidence < 0.6) {
+        baseAttention = Math.max(1, baseAttention - 1);
+    } else if (confidence > 0.85) {
+        baseAttention = Math.min(3, baseAttention + 0.5);
     }
     
-    return {
-        emotion: emotion,
-        attention: attention,
-        confidence: 0.7 + Math.random() * 0.3
-    };
+    return Math.round(baseAttention);
 }
 
 // 顯示檢測警告
@@ -538,10 +700,10 @@ function showDetectionWarning(message) {
         messageElement.textContent = message;
         warningElement.style.display = 'block';
         
-        // 3秒後自動隱藏
+        // 5秒後自動隱藏
         setTimeout(() => {
-            warningElement.style.display = 'none';
-        }, 3000);
+            hideDetectionWarning();
+        }, 5000);
     }
 }
 
@@ -723,15 +885,45 @@ function generateReport() {
     window.location.href = '/smart_suggestions';
 }
 
-// 添加必要的 script 標籤到頁面
+// 刪除學習記錄
+async function deleteStudySession(sessionId) {
+    if (!confirm('確定要刪除這次學習記錄嗎？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/delete_session/${sessionId}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 重新載入頁面以更新資料
+            window.location.reload();
+        } else {
+            alert('刪除失敗：' + result.message);
+        }
+    } catch (error) {
+        alert('刪除失敗，請稍後再試');
+    }
+}
+
+// 載入必要的外部庫
 if (window.location.pathname.includes('/study/')) {
-    // 載入 ONNX Runtime
-    const onnxScript = document.createElement('script');
-    onnxScript.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js';
-    document.head.appendChild(tfScript);
-}d.appendChild(onnxScript);
+    // 載入 MediaPipe Face Detection
+    const mediapipeScript = document.createElement('script');
+    mediapipeScript.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js';
+    mediapipeScript.onload = () => {
+        console.log('MediaPipe Face Detection 載入完成');
+    };
+    document.head.appendChild(mediapipeScript);
     
     // 載入 TensorFlow.js
     const tfScript = document.createElement('script');
     tfScript.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js';
-    document.hea
+    tfScript.onload = () => {
+        console.log('TensorFlow.js 載入完成');
+    };
+    document.head.appendChild(tfScript);
+}

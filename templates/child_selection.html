@@ -104,8 +104,9 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="age" class="form-label">年齡</label>
+                        <label for="age" class="form-label">年齡 (6-18歲)</label>
                         <input type="number" class="form-control" id="age" min="6" max="18" required>
+                        <div class="form-text">請輸入6-18歲之間的年齡</div>
                     </div>
                     
                     <div class="mb-3">
@@ -148,57 +149,28 @@
     </div>
 </div>
 
-<style>
-.child-card {
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px solid transparent;
-}
-
-.child-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    border-color: #007bff;
-}
-
-.add-child-card {
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: 2px dashed #28a745;
-    background-color: rgba(40, 167, 69, 0.05);
-}
-
-.add-child-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 30px rgba(40, 167, 69, 0.2);
-    background-color: rgba(40, 167, 69, 0.1);
-}
-
-.child-avatar {
-    width: 100px;
-    height: 100px;
-    margin: 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-    border-radius: 50%;
-}
-</style>
-
 <script>
 function selectChild(childId) {
     window.location.href = `/select_child/${childId}`;
 }
 
 async function createChild() {
-    const nickname = document.getElementById('nickname').value;
+    const nickname = document.getElementById('nickname').value.trim();
     const gender = document.querySelector('input[name="gender"]:checked').value;
-    const age = document.getElementById('age').value;
+    const ageInput = document.getElementById('age');
+    const age = parseInt(ageInput.value);
     const education_stage = document.getElementById('education_stage').value;
     
+    // 驗證必填欄位
     if (!nickname || !age || !education_stage) {
         alert('請填寫所有欄位');
+        return;
+    }
+    
+    // 驗證年齡範圍
+    if (isNaN(age) || age < 6 || age > 18) {
+        alert('年齡必須在6-18歲之間');
+        ageInput.focus();
         return;
     }
     
@@ -279,5 +251,38 @@ async function deleteAccount() {
         alert('刪除失敗，請稍後再試');
     }
 }
+
+// 年齡輸入驗證
+document.addEventListener('DOMContentLoaded', function() {
+    const ageInput = document.getElementById('age');
+    if (ageInput) {
+        // 輸入時即時驗證
+        ageInput.addEventListener('input', function() {
+            let age = parseInt(this.value);
+            if (age < 6) {
+                this.value = 6;
+            } else if (age > 18) {
+                this.value = 18;
+            }
+        });
+        
+        // 失去焦點時驗證
+        ageInput.addEventListener('blur', function() {
+            let age = parseInt(this.value);
+            if (isNaN(age) || age < 6) {
+                this.value = 6;
+            } else if (age > 18) {
+                this.value = 18;
+            }
+        });
+        
+        // 防止輸入非數字
+        ageInput.addEventListener('keypress', function(e) {
+            if (e.which < 48 || e.which > 57) {
+                e.preventDefault();
+            }
+        });
+    }
+});
 </script>
 {% endblock %}

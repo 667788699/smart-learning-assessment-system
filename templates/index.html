@@ -19,7 +19,7 @@
                     <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg me-md-2">
                         <i class="fas fa-user-plus me-2"></i>立即註冊
                     </a>
-                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                    <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-lg">
                         <i class="fas fa-sign-in-alt me-2"></i>登入系統
                     </a>
                 </div>
@@ -42,7 +42,7 @@
                 <div class="card-body">
                     <i class="fas fa-eye fa-3x text-primary mb-3"></i>
                     <h5 class="card-title fw-bold">即時檢測</h5>
-                    <p class="card-text">透過 YOLOv8 和深度學習模型，即時監測學習狀態並分析專注度變化</p>
+                    <p class="card-text">透過 AI 視覺技術，即時監測學習狀態並分析專注度變化</p>
                 </div>
             </div>
         </div>
@@ -87,7 +87,7 @@
                             <li><i class="fas fa-check text-success me-2"></i>學習時長統計</li>
                             <li><i class="fas fa-check text-success me-2"></i>專注度趨勢分析</li>
                             <li><i class="fas fa-check text-success me-2"></i>科目表現比較</li>
-                            <li><i class="fas fa-check text-success me-2"></i>情緒狀態分布</li>
+                            <li><i class="fas fa-check text-success me-2"></i>學習日曆檢視</li>
                         </ul>
                     </div>
                 </div>
@@ -191,7 +191,7 @@
                     </div>
                     <div class="flex-grow-1 ms-3">
                         <h5>AI 技術支援</h5>
-                        <p class="text-muted">採用 YOLOv8 臉部偵測與深度學習情緒分類模型</p>
+                        <p class="text-muted">採用先進的人臉檢測與深度學習情緒分類模型</p>
                     </div>
                 </div>
             </div>
@@ -210,37 +210,6 @@
     </div>
 </div>
 
-<style>
-.hero-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    min-height: 60vh;
-    display: flex;
-    align-items: center;
-}
-
-.feature-card {
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.feature-card.clickable {
-    cursor: pointer;
-}
-
-.feature-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 12px 30px rgba(0,0,0,0.15);
-}
-
-.card-title {
-    color: #2c3e50;
-}
-
-#demo-chart {
-    max-height: 250px;
-}
-</style>
-
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 // 示範圖表
@@ -254,8 +223,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 datasets: [{
                     label: '專注度趨勢',
                     data: [65, 68, 72, 75, 78, 82],
-                    borderColor: '#3498DB',
-                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderColor: '#42a5f5',
+                    backgroundColor: 'rgba(66, 165, 245, 0.1)',
                     borderWidth: 3,
                     tension: 0.4
                 }]

@@ -185,6 +185,14 @@ def create_child():
    age = data.get('age')
    education_stage = data.get('education_stage')
    
+   # 驗證年齡範圍
+   try:
+       age = int(age)
+       if age < 6 or age > 18:
+           return jsonify({'success': False, 'message': '年齡必須在6-18歲之間'})
+   except (ValueError, TypeError):
+       return jsonify({'success': False, 'message': '請輸入有效的年齡'})
+   
    # 檢查是否已達到4個小孩的限制
    existing_children = Child.query.filter_by(user_id=session['user_id']).count()
    if existing_children >= 4:
@@ -195,7 +203,7 @@ def create_child():
        user_id=session['user_id'],
        nickname=nickname,
        gender=gender,
-       age=int(age),
+       age=age,
        education_stage=education_stage
    )
    db.session.add(child)
@@ -348,6 +356,64 @@ def end_session():
    
    return jsonify({'success': False, 'message': '找不到學習階段'})
 
+@app.route('/delete_session/<int:session_id>', methods=['POST'])
+def delete_session(session_id):
+   """刪除單次學習記錄"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入並選擇小孩'})
+   
+   # 確保這個學習記錄屬於當前用戶的小孩
+   study_session = StudySession.query.filter_by(
+       id=session_id, 
+       child_id=session['child_id']
+   ).first()
+   
+   if study_session:
+       db.session.delete(study_session)
+       db.session.commit()
+       return jsonify({'success': True})
+   
+   return jsonify({'success': False, 'message': '找不到該學習記錄'})
+
+@app.route('/get_calendar_data')
+def get_calendar_data():
+   """獲取日曆數據"""
+   if 'user_id' not in session or 'child_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入並選擇小孩'})
+   
+   year = request.args.get('year', datetime.now().year, type=int)
+   month = request.args.get('month', datetime.now().month, type=int)
+   
+   # 獲取指定月份的學習記錄
+   start_date = datetime(year, month, 1)
+   if month == 12:
+       end_date = datetime(year + 1, 1, 1)
+   else:
+       end_date = datetime(year, month + 1, 1)
+   
+   sessions = StudySession.query.filter(
+       StudySession.child_id == session['child_id'],
+       StudySession.start_time >= start_date,
+       StudySession.start_time < end_date
+   ).all()
+   
+   # 按日期分組
+   calendar_data = {}
+   for session in sessions:
+       date_key = session.start_time.strftime('%Y-%m-%d')
+       if date_key not in calendar_data:
+           calendar_data[date_key] = []
+       
+       calendar_data[date_key].append({
+           'id': session.id,
+           'subject': SUBJECTS.get(session.subject, session.subject),
+           'duration_minutes': session.duration_minutes,
+           'avg_attention': session.avg_attention,
+           'start_time': session.start_time.strftime('%H:%M')
+       })
+   
+   return jsonify({'success': True, 'data': calendar_data})
+
 @app.route('/data_analysis')
 def data_analysis():
    """數據分析頁面"""
@@ -372,7 +438,7 @@ def smart_suggestions():
        return redirect(url_for('child_selection'))
    
    child = Child.query.get(session['child_id'])
-   study_sessions = StudySession.query.filter_by(child_id=child.id).all()
+   study_sessions = StudySession.query.filter_by(child_id=child.id).order_by(StudySession.start_time.asc()).all()
    
    # 生成個人化建議
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
@@ -380,10 +446,14 @@ def smart_suggestions():
    # 準備視覺化數據
    performance_data = prepare_performance_data(study_sessions)
    
+   # 準備真實的專注度趨勢數據
+   attention_trend_data = prepare_attention_trend_data(study_sessions, child.created_at)
+   
    return render_template('smart_suggestions.html',
                         child=child,
                         suggestions=suggestions,
-                        performance_data=performance_data)
+                        performance_data=performance_data,
+                        attention_trend_data=attention_trend_data)
 
 @app.route('/generate_report/<int:child_id>')
 def generate_report(child_id):
@@ -537,6 +607,33 @@ def prepare_performance_data(study_sessions):
    
    return data
 
+def prepare_attention_trend_data(study_sessions, account_created_date):
+   """準備真實的專注度趨勢數據"""
+   if not study_sessions:
+       return {'labels': [], 'data': []}
+   
+   # 按日期分組計算每日平均專注度
+   daily_attention = {}
+   
+   for session in study_sessions:
+       if session.avg_attention:
+           date_key = session.start_time.date()
+           if date_key not in daily_attention:
+               daily_attention[date_key] = []
+           daily_attention[date_key].append(session.avg_attention)
+   
+   # 計算每日平均值並排序
+   sorted_dates = sorted(daily_attention.keys())
+   labels = []
+   data = []
+   
+   for date in sorted_dates:
+       labels.append(date.strftime('%m/%d'))
+       avg_attention = sum(daily_attention[date]) / len(daily_attention[date])
+       data.append(round(avg_attention * 100 / 3))  # 轉換為百分比
+   
+   return {'labels': labels, 'data': data}
+
 def generate_comprehensive_suggestions(child, study_sessions):
    """生成全面的個人化建議"""
    suggestions = {
@@ -585,7 +682,7 @@ def generate_comprehensive_suggestions(child, study_sessions):
                suggestions['attention_improvement'].append("專注度表現優秀！繼續保持良好的學習習慣")
                suggestions['attention_improvement'].append("可以嘗試更有挑戰性的學習內容")
        
-       # 學習時間分析
+       # 學習時間分析 - 修正時間顯示問題
        study_hours = {}
        for session in study_sessions:
            hour = session.start_time.hour
@@ -595,10 +692,25 @@ def generate_comprehensive_suggestions(child, study_sessions):
                study_hours[hour].append(session.avg_attention)
        
        if study_hours:
-           best_hour = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
-           suggestions['schedule'].append(f"您的孩子在{best_hour[0]}點學習時專注度最高，建議安排重要科目在這個時段")
+           best_hour_data = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
+           best_hour = best_hour_data[0]
+           time_period = ""
+           if 6 <= best_hour < 9:
+               time_period = "早上"
+           elif 9 <= best_hour < 12:
+               time_period = "上午"
+           elif 12 <= best_hour < 14:
+               time_period = "中午"
+           elif 14 <= best_hour < 18:
+               time_period = "下午"
+           elif 18 <= best_hour < 21:
+               time_period = "傍晚"
+           else:
+               time_period = "晚上"
+           
+           suggestions['schedule'].append(f"您的孩子在{time_period}({best_hour}點)學習時專注度最高，建議安排重要科目在這個時段")
        
-       # 科目建議
+       # 多元化科目建議
        subject_performance = {}
        for session in study_sessions:
            if session.avg_attention:
@@ -611,9 +723,93 @@ def generate_comprehensive_suggestions(child, study_sessions):
            subject_name = SUBJECTS.get(subject, subject)
            
            if avg_perf < 2:
-               suggestions['subject_specific'].append(f"{subject_name}需要加強，建議採用更互動的學習方式")
+               # 根據教育階段和科目提供不同建議
+               if subject == 'math':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議使用數學遊戲和實物教具輔助學習")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做基礎練習題，建立數學邏輯思維")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議分章節複習，多做歷屆考題練習")
+               elif subject == 'science':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過實驗和觀察增加學習興趣")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議結合生活實例理解科學概念")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做實驗報告和科學推理練習")
+               elif subject == 'language':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多閱讀故事書和練習寫作")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議增加閱讀量並練習文章分析")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入研讀經典文學作品")
+               elif subject == 'social':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過地圖和圖片學習地理歷史")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議關注時事並學會分析社會現象")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入了解政治經濟制度")
+               elif subject == 'art':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多元嘗試繪畫、手工等創作活動")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議學習基礎美術技巧和藝術鑑賞")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議培養個人藝術風格和創作理念")
+               elif subject == 'cs':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議從圖形化程式設計工具開始學習")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議學習基礎程式語言和邏輯思維")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入學習演算法和資料結構")
            else:
-               suggestions['subject_specific'].append(f"{subject_name}表現良好，可以增加學習深度")
+               # 表現良好的科目也根據教育階段給予不同建議
+               if subject == 'math':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試數學競賽題目增加挑戰")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議學習更進階的數學概念")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習微積分等大學預備課程")
+               elif subject == 'science':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參與科學展覽或實驗競賽")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議深入學習感興趣的科學領域")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參與科學研究專題")
+               elif subject == 'language':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試創作短篇故事")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議閱讀更多文學作品")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試文學創作或評論")
+               elif subject == 'social':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以多了解不同國家的文化")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參與社會議題討論")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以深入研究政治經濟理論")
+               elif subject == 'art':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試不同的藝術媒材")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參加藝術比賽或展覽")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以考慮藝術相關的職業發展")
+               elif subject == 'cs':
+                   if child.education_stage == 'elementary':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習更複雜的程式專案")
+                   elif child.education_stage == 'middle':
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參加程式設計競賽")
+                   else:
+                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習軟體開發和系統設計")
    
    return suggestions
 
