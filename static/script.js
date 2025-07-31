@@ -413,7 +413,7 @@ function startFaceDetection() {
         if (isDetecting && video && canvas) {
             detectFaceAndEmotion();
         }
-    }, 2000); // 每2秒檢測一次
+    }, 1000); // 每2秒檢測一次
 }
 
 // 人臉檢測和情緒辨識
@@ -470,14 +470,14 @@ async function performRealFaceDetection() {
                 
                 if (faces.length === 0) {
                     noFaceWarningCount++;
-                    if (noFaceWarningCount >= 3) {
+                    if (noFaceWarningCount >= 2) {
                         return { error: '未檢測到人臉，請確保臉部在攝影機範圍內並面向攝影機' };
                     }
                 }
                 
                 if (faces.length > 1) {
                     multipleFaceWarningCount++;
-                    if (multipleFaceWarningCount >= 2) {
+                    if (multipleFaceWarningCount >= 3) {
                         return { error: '檢測到多人，請確保只有一人在攝影機前' };
                     }
                 }
