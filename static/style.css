@@ -37,6 +37,23 @@ body {
     color: #1976d2 !important;
 }
 
+/* 下拉選單樣式 */
+.dropdown-menu {
+    border: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    border-radius: 8px;
+}
+
+.dropdown-item {
+    color: #1976d2;
+    transition: all 0.3s ease;
+}
+
+.dropdown-item:hover {
+    background-color: #e3f2fd;
+    color: #0d47a1;
+}
+
 /* 首頁 Hero 區域 - 淺色漸層 */
 .hero-section {
     background: linear-gradient(135deg, #e3f2fd 0%, #c8e6c9 100%);
@@ -241,6 +258,36 @@ body {
     display: block;
     border-radius: 11px;
     object-fit: cover;
+}
+
+/* 情緒圖表容器樣式 */
+.emotion-chart-container {
+    height: 300px;
+    position: relative;
+    padding: 10px;
+}
+
+/* 統一右側卡片高度 */
+.col-lg-4 .card {
+    min-height: 160px;
+}
+
+#emotionCard {
+    min-height: 350px;
+}
+
+#emotionCard .card-body {
+    padding: 0.75rem;
+}
+
+/* 確保視訊畫面與右側三個卡片總高度一致 */
+@media (min-width: 992px) {
+    .col-lg-8 .card-body {
+        min-height: 600px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
 }
 
 /* 按鈕樣式 - 淺色系 */
@@ -764,6 +811,10 @@ body {
         font-size: 0.8rem;
     }
     
+    .emotion-chart-container {
+        height: 250px;
+    }
+    
     .card-body {
         padding: 1.5rem;
     }
@@ -819,6 +870,10 @@ body {
         width: 45px;
         height: 45px;
         font-size: 0.7rem;
+    }
+    
+    .emotion-chart-container {
+        height: 200px;
     }
     
     .btn {

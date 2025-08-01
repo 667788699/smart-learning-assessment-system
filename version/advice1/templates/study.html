@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject_name }} - {{ child.nickname }} 的學習{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- 左側：攝影機畫面 -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-video text-primary me-2"></i>
+                        {{ child.nickname }} - {{ subject_name }} 學習檢測
+                    </h4>
+                </div>
+                <div class="card-body text-center">
+                    <div class="video-container mb-3">
+                        <video id="video" width="640" height="480" autoplay muted></video>
+                        <canvas id="canvas" width="300" height="300" style="display: none;"></canvas>
+                    </div>
+                    
+                    <!-- 攝影機狀態提示 -->
+                    <div id="cameraStatus" class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        正在啟動攝影機...
+                    </div>
+                    
+                    <!-- 檢測狀態警告 -->
+                    <div id="detectionWarning" class="alert alert-warning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="warningMessage"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 右側：控制面板和狀態顯示 -->
+        <div class="col-lg-4">
+            <!-- 學習時間設定 -->
+            <div class="card mb-3" id="timeSettingCard">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clock text-primary me-2"></i>學習時間設定
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="studyDuration" class="form-label">學習時長（分鐘）</label>
+                        <input type="number" class="form-control" id="studyDuration" 
+                               value="{% if child.education_stage == 'elementary' %}20{% elif child.education_stage == 'middle' %}30{% else %}45{% endif %}" 
+                               min="5" max="120">
+                        <small class="text-muted">
+                            建議時長：
+                            {% if child.education_stage == 'elementary' %}
+                                國小生 15-25 分鐘
+                            {% elif child.education_stage == 'middle' %}
+                                國中生 25-35 分鐘
+                            {% else %}
+                                高中生 40-60 分鐘
+                            {% endif %}
+                        </small>
+                    </div>
+                    <div class="d-grid">
+                        <button id="startButton" class="btn btn-success btn-lg">
+                            <i class="fas fa-play me-2"></i>開始學習
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 學習狀態顯示 -->
+            <div class="card mb-3" id="statusCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tachometer-alt text-primary me-2"></i>學習狀態
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- 剩餘時間 -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>剩餘時間</span>
+                            <span id="remainingTime" class="badge bg-primary fs-6">00:00</span>
+                        </div>
+                        <div class="progress mt-2">
+                            <div id="timeProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 專注度狀態 -->
+                    <div class="mb-3">
+                        <div class="text-center">
+                            <h6>目前專注度</h6>
+                            <div id="attentionIndicator" class="attention-indicator">
+                                <div class="attention-light" id="lowAttention">
+                                    <span>低</span>
+                                </div>
+                                <div class="attention-light" id="mediumAttention">
+                                    <span>中</span>
+                                </div>
+                                <div class="attention-light" id="highAttention">
+                                    <span>高</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 控制按鈕 -->
+                    <div class="d-grid gap-2">
+                        <button id="pauseButton" class="btn btn-warning">
+                            <i class="fas fa-pause me-2"></i>暫停
+                        </button>
+                        <button id="endButton" class="btn btn-danger">
+                            <i class="fas fa-stop me-2"></i>結束學習
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 學習統計 -->
+            <div class="card" id="statsCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line text-primary me-2"></i>即時統計
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-12 mb-2">
+                            <small class="text-muted">平均專注度</small>
+                            <div id="avgAttention" class="h4 text-primary">0%</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">檢測次數</small>
+                            <div id="detectionCount" class="h5">0</div>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">有效檢測</small>
+                            <div id="validDetections" class="h5">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 學習完成模態框 -->
+<div class="modal fade" id="sessionCompleteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle text-success me-2"></i>
+                    學習完成！
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="text-center">
+                    <h4>{{ child.nickname }} 完成了 {{ subject_name }} 的學習！</h4>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalDuration">0 分鐘</h5>
+                                    <small class="text-muted">學習時長</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalAttention">0%</h5>
+                                    <small class="text-muted">平均專注度</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h5 id="finalDetections">0</h5>
+                                    <small class="text-muted">有效檢測次數</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="location.href='{{ url_for('dashboard') }}'">
+                    返回學習中心
+                </button>
+                <button type="button" class="btn btn-primary" id="generateReportBtn">
+                    <i class="fas fa-lightbulb me-2"></i>查看智慧建議
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.video-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.video-container video {
+    max-width: 100%;
+    height: auto;
+    border: 3px solid #42a5f5;
+    border-radius: 10px;
+}
+
+@media (max-width: 768px) {
+    .video-container video {
+        width: 100%;
+    }
+    
+    .col-lg-8, .col-lg-4 {
+        margin-bottom: 1rem;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+    
+    .attention-indicator {
+        padding: 15px;
+    }
+    
+    .attention-light {
+        width: 50px;
+        height: 50px;
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .video-container video {
+        border-width: 2px;
+    }
+    
+    .attention-light {
+        width: 45px;
+        height: 45px;
+        font-size: 0.7rem;
+    }
+    
+    .card-header h4,
+    .card-header h5 {
+        font-size: 1rem;
+    }
+    
+    .btn-lg {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+    }
+}
+
+/* 確保專注度指示器在小螢幕上也能正常顯示 */
+.attention-indicator {
+    min-height: 80px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+/* 統計卡片的數字強調 */
+#avgAttention {
+    font-weight: bold;
+    color: #42a5f5 !important;
+}
+
+#detectionCount,
+#validDetections {
+    font-weight: 600;
+    color: #1976d2;
+}
+
+/* 進度條增強 */
+.progress {
+    height: 10px;
+    border-radius: 5px;
+}
+
+.progress-bar {
+    border-radius: 5px;
+}
+
+/* 警告框樣式增強 */
+#detectionWarning {
+    border-left: 4px solid #ff9800;
+    background: linear-gradient(45deg, #fff8e1, #ffecb3);
+}
+
+#cameraStatus.alert-success {
+    border-left: 4px solid #4caf50;
+    background: linear-gradient(45deg, #e8f5e8, #c8e6c8);
+}
+
+#cameraStatus.alert-danger {
+    border-left: 4px solid #f44336;
+    background: linear-gradient(45deg, #ffebee, #ffcdd2);
+}
+
+/* 完成模態框的統計卡片 */
+.modal-body .card.bg-light {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+    border: 1px solid rgba(66, 165, 245, 0.1);
+}
+
+.modal-body .card h5 {
+    color: #1976d2;
+    font-weight: bold;
+}
+</style>
+
+<script>
+    const SUBJECT = '{{ subject }}';
+    const SUBJECT_NAME = '{{ subject_name }}';
+    const CHILD_INFO = {
+        nickname: '{{ child.nickname }}',
+        age: {{ child.age }},
+        gender: '{{ child.gender }}',
+        education_stage: '{{ child.education_stage }}'
+    };
+</script>
+{% endblock %}

@@ -79,6 +79,7 @@ class StudySession(db.Model):
    end_time = db.Column(db.DateTime)
    avg_attention = db.Column(db.Float)
    avg_emotion_score = db.Column(db.Float)
+   # 移除 best_subject_of_day 欄位，改用動態計算
    emotion_data = db.relationship('EmotionData', backref='study_session', lazy=True, cascade='all, delete-orphan')
 
 class EmotionData(db.Model):
@@ -111,6 +112,22 @@ GENDERS = {
    'male': '男生',
    'female': '女生'
 }
+
+def upgrade_database():
+    """升級資料庫結構"""
+    try:
+        # 檢查是否需要升級
+        with app.app_context():
+            # 嘗試查詢現有表結構
+            result = db.engine.execute("PRAGMA table_info(study_session)")
+            columns = [row[1] for row in result]
+            
+            # 如果沒有 best_subject_of_day 欄位，則不需要做任何事情
+            # 因為我們已經從模型中移除了這個欄位
+            print("資料庫結構檢查完成")
+            
+    except Exception as e:
+        print(f"資料庫升級過程中發生錯誤: {e}")
 
 @app.route('/')
 def index():
@@ -233,7 +250,10 @@ def dashboard():
        return redirect(url_for('child_selection'))
    
    child_id = session['child_id']
-   child = Child.query.get(child_id)
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   
+   if not child:
+       return redirect(url_for('child_selection'))
    
    # 獲取小孩的學習記錄統計
    user_study_sessions = StudySession.query.filter_by(child_id=child_id).all()
@@ -270,7 +290,10 @@ def study_session(subject):
    if subject not in SUBJECTS:
        return redirect(url_for('dashboard'))
    
-   child = Child.query.get(session['child_id'])
+   child = Child.query.filter_by(id=session['child_id'], user_id=session['user_id']).first()
+   
+   if not child:
+       return redirect(url_for('child_selection'))
    
    return render_template('study.html', 
                         subject=subject, 
@@ -298,6 +321,7 @@ def start_session():
    db.session.commit()
    
    session['current_session_id'] = new_study_session.id
+   session['session_start_time'] = datetime.utcnow().isoformat()
    
    return jsonify({'success': True, 'session_id': new_study_session.id})
 
@@ -337,6 +361,12 @@ def end_session():
    if current_study_session:
        current_study_session.end_time = datetime.utcnow()
        
+       # 計算實際學習時間（分鐘整數）
+       if 'session_start_time' in session:
+           start_time = datetime.fromisoformat(session['session_start_time'])
+           actual_duration = (datetime.utcnow() - start_time).total_seconds() / 60
+           current_study_session.duration_minutes = int(actual_duration)
+       
        # 計算平均專注度和情緒分數
        emotion_records = EmotionData.query.filter_by(session_id=session_id).all()
        
@@ -351,10 +381,27 @@ def end_session():
        
        # 清除當前階段
        session.pop('current_session_id', None)
+       session.pop('session_start_time', None)
        
        return jsonify({'success': True, 'session_id': session_id})
    
    return jsonify({'success': False, 'message': '找不到學習階段'})
+
+def get_best_subject_for_date(child_id, date):
+   """獲取指定日期的最佳科目"""
+   # 獲取該日期的所有學習記錄
+   sessions = StudySession.query.filter(
+       StudySession.child_id == child_id,
+       db.func.date(StudySession.start_time) == date,
+       StudySession.avg_attention.isnot(None)
+   ).all()
+   
+   if not sessions:
+       return None
+   
+   # 找出專注度最高的科目
+   best_session = max(sessions, key=lambda x: x.avg_attention)
+   return best_session.subject
 
 @app.route('/delete_session/<int:session_id>', methods=['POST'])
 def delete_session(session_id):
@@ -397,20 +444,49 @@ def get_calendar_data():
        StudySession.start_time < end_date
    ).all()
    
-   # 按日期分組
+   # 按日期分組，找出每日最佳科目
    calendar_data = {}
-   for session in sessions:
-       date_key = session.start_time.strftime('%Y-%m-%d')
-       if date_key not in calendar_data:
-           calendar_data[date_key] = []
+   daily_subjects = {}
+   
+   for study_session in sessions:
+       date_key = study_session.start_time.strftime('%Y-%m-%d')
+       if date_key not in daily_subjects:
+           daily_subjects[date_key] = []
        
-       calendar_data[date_key].append({
-           'id': session.id,
-           'subject': SUBJECTS.get(session.subject, session.subject),
-           'duration_minutes': session.duration_minutes,
-           'avg_attention': session.avg_attention,
-           'start_time': session.start_time.strftime('%H:%M')
+       daily_subjects[date_key].append({
+           'subject': study_session.subject,
+           'attention': study_session.avg_attention or 0,
+           'session_data': {
+               'id': study_session.id,
+               'subject': SUBJECTS.get(study_session.subject, study_session.subject),
+               'duration_minutes': study_session.duration_minutes,
+               'avg_attention': study_session.avg_attention,
+               'start_time': study_session.start_time.strftime('%H:%M')
+           }
        })
+   
+   # 為每天確定最佳科目和顏色
+   for date_key, subjects in daily_subjects.items():
+       if subjects:
+           # 找出專注度最高的科目
+           best_subject_data = max(subjects, key=lambda x: x['attention'])
+           best_subject = best_subject_data['subject']
+           
+           # 根據科目分配顏色
+           subject_colors = {
+               'math': '#3498DB',      # 藍色
+               'science': '#2ECC71',   # 綠色
+               'language': '#E74C3C',  # 紅色
+               'social': '#F39C12',    # 橙色
+               'art': '#9B59B6',       # 紫色
+               'cs': '#1ABC9C'         # 青色
+           }
+           
+           calendar_data[date_key] = {
+               'best_subject': best_subject,
+               'color': subject_colors.get(best_subject, '#95A5A6'),
+               'sessions': [s['session_data'] for s in subjects]
+           }
    
    return jsonify({'success': True, 'data': calendar_data})
 
@@ -420,7 +496,11 @@ def data_analysis():
    if 'user_id' not in session or 'child_id' not in session:
        return redirect(url_for('child_selection'))
    
-   child = Child.query.get(session['child_id'])
+   child = Child.query.filter_by(id=session['child_id'], user_id=session['user_id']).first()
+   
+   if not child:
+       return redirect(url_for('child_selection'))
+   
    study_sessions = StudySession.query.filter_by(child_id=child.id).order_by(StudySession.start_time.desc()).all()
    
    # 準備圖表數據
@@ -437,7 +517,11 @@ def smart_suggestions():
    if 'user_id' not in session or 'child_id' not in session:
        return redirect(url_for('child_selection'))
    
-   child = Child.query.get(session['child_id'])
+   child = Child.query.filter_by(id=session['child_id'], user_id=session['user_id']).first()
+   
+   if not child:
+       return redirect(url_for('child_selection'))
+   
    study_sessions = StudySession.query.filter_by(child_id=child.id).order_by(StudySession.start_time.asc()).all()
    
    # 生成個人化建議
@@ -446,14 +530,10 @@ def smart_suggestions():
    # 準備視覺化數據
    performance_data = prepare_performance_data(study_sessions)
    
-   # 準備真實的專注度趨勢數據
-   attention_trend_data = prepare_attention_trend_data(study_sessions, child.created_at)
-   
    return render_template('smart_suggestions.html',
                         child=child,
                         suggestions=suggestions,
-                        performance_data=performance_data,
-                        attention_trend_data=attention_trend_data)
+                        performance_data=performance_data)
 
 @app.route('/generate_report/<int:child_id>')
 def generate_report(child_id):
@@ -525,6 +605,82 @@ def delete_account():
        return jsonify({'success': True})
    
    return jsonify({'success': False, 'message': '找不到該帳號'})
+
+@app.route('/update_user_profile', methods=['POST'])
+def update_user_profile():
+   """更新使用者資料"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   data = request.get_json()
+   user = User.query.get(session['user_id'])
+   
+   if user:
+       new_username = data.get('username')
+       new_email = data.get('email')
+       new_password = data.get('password')
+       
+       # 檢查使用者名稱是否被其他人使用
+       if new_username != user.username:
+           existing_user = User.query.filter_by(username=new_username).first()
+           if existing_user:
+               return jsonify({'success': False, 'message': '使用者名稱已被使用'})
+       
+       # 檢查電子郵件是否被其他人使用
+       if new_email != user.email:
+           existing_email = User.query.filter_by(email=new_email).first()
+           if existing_email:
+               return jsonify({'success': False, 'message': '電子郵件已被使用'})
+       
+       # 更新資料
+       user.username = new_username
+       user.email = new_email
+       
+       if new_password:
+           user.password_hash = bcrypt.generate_password_hash(new_password).decode('utf-8')
+       
+       db.session.commit()
+       session['username'] = new_username
+       
+       return jsonify({'success': True, 'message': '資料更新成功'})
+   
+   return jsonify({'success': False, 'message': '找不到使用者'})
+
+@app.route('/update_child_profile', methods=['POST'])
+def update_child_profile():
+   """更新小孩資料"""
+   if 'user_id' not in session:
+       return jsonify({'success': False, 'message': '請先登入'})
+   
+   data = request.get_json()
+   child_id = data.get('child_id')
+   child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
+   
+   if child:
+       age = data.get('age')
+       
+       # 驗證年齡範圍
+       try:
+           age = int(age)
+           if age < 6 or age > 18:
+               return jsonify({'success': False, 'message': '年齡必須在6-18歲之間'})
+       except (ValueError, TypeError):
+           return jsonify({'success': False, 'message': '請輸入有效的年齡'})
+       
+       child.nickname = data.get('nickname')
+       child.gender = data.get('gender')
+       child.age = age
+       child.education_stage = data.get('education_stage')
+       
+       db.session.commit()
+       
+       # 如果更新的是當前選中的小孩，更新session
+       if session.get('child_id') == child_id:
+           session['child_nickname'] = child.nickname
+       
+       return jsonify({'success': True, 'message': '小孩資料更新成功'})
+   
+   return jsonify({'success': False, 'message': '找不到小孩檔案'})
 
 def prepare_chart_data(study_sessions):
    """準備圖表數據"""
@@ -607,33 +763,6 @@ def prepare_performance_data(study_sessions):
    
    return data
 
-def prepare_attention_trend_data(study_sessions, account_created_date):
-   """準備真實的專注度趨勢數據"""
-   if not study_sessions:
-       return {'labels': [], 'data': []}
-   
-   # 按日期分組計算每日平均專注度
-   daily_attention = {}
-   
-   for session in study_sessions:
-       if session.avg_attention:
-           date_key = session.start_time.date()
-           if date_key not in daily_attention:
-               daily_attention[date_key] = []
-           daily_attention[date_key].append(session.avg_attention)
-   
-   # 計算每日平均值並排序
-   sorted_dates = sorted(daily_attention.keys())
-   labels = []
-   data = []
-   
-   for date in sorted_dates:
-       labels.append(date.strftime('%m/%d'))
-       avg_attention = sum(daily_attention[date]) / len(daily_attention[date])
-       data.append(round(avg_attention * 100 / 3))  # 轉換為百分比
-   
-   return {'labels': labels, 'data': data}
-
 def generate_comprehensive_suggestions(child, study_sessions):
    """生成全面的個人化建議"""
    suggestions = {
@@ -644,28 +773,28 @@ def generate_comprehensive_suggestions(child, study_sessions):
        'age_appropriate': []
    }
    
-   # 基於年齡和教育階段的建議
+   # 基於年齡和教育階段的建議 - 統一推薦番茄鐘技巧
+   suggestions['age_appropriate'].append("建議使用番茄鐘技巧：學習25分鐘，休息5分鐘，有助於維持專注力")
+   
    if child.education_stage == 'elementary':
        if child.age <= 8:
-           suggestions['age_appropriate'].append("建議每次學習時間控制在15-20分鐘，並搭配互動式學習活動")
-           suggestions['age_appropriate'].append("可以使用獎勵貼紙或積分制度來增加學習動機")
+           suggestions['age_appropriate'].append("年齡較小，建議搭配互動式學習活動和獎勵制度增加學習動機")
        else:
-           suggestions['age_appropriate'].append("可以逐漸延長學習時間至25-30分鐘，培養專注力")
-           suggestions['age_appropriate'].append("鼓勵自主選擇學習主題，提升學習興趣")
+           suggestions['age_appropriate'].append("可以鼓勵自主選擇學習主題，提升學習興趣和責任感")
    elif child.education_stage == 'middle':
-       suggestions['age_appropriate'].append("這個階段的學生需要更多的自主學習空間，建議設定明確的學習目標")
-       suggestions['age_appropriate'].append("可以嘗試番茄工作法，25分鐘專注學習，5分鐘休息")
+       suggestions['age_appropriate'].append("國中階段需要更多自主學習空間，建議設定明確的學習目標")
+       suggestions['age_appropriate'].append("可以開始培養時間管理和學習計畫的能力")
    else:  # high school
-       suggestions['age_appropriate'].append("高中生需要更長的專注時間，建議每次學習45-60分鐘")
-       suggestions['age_appropriate'].append("重視學習效率，建議使用思維導圖等學習工具")
+       suggestions['age_appropriate'].append("高中生需要更強的自律性，建議制定長期學習計畫")
+       suggestions['age_appropriate'].append("重視學習效率，可使用思維導圖、康乃爾筆記法等學習工具")
    
-   # 基於性別的建議（謹慎處理，避免刻板印象）
+   # 基於性別的建議（避免刻板印象）
    if child.gender == 'female':
-       suggestions['learning_style'].append("研究顯示女生在合作學習環境中表現更好，可以考慮與朋友一起學習")
+       suggestions['learning_style'].append("可以考慮與朋友一起學習，合作學習環境有助於學習效果")
    else:
-       suggestions['learning_style'].append("研究顯示男生在競爭性學習環境中較有動力，可以設定挑戰性目標")
+       suggestions['learning_style'].append("可以設定挑戰性目標，競爭性學習環境較能激發學習動力")
    
-   # 基於學習數據的建議
+   # 基於學習數據的時間規劃建議
    if study_sessions:
        # 專注度分析
        attention_sessions = [s for s in study_sessions if s.avg_attention]
@@ -675,14 +804,15 @@ def generate_comprehensive_suggestions(child, study_sessions):
            if avg_attention < 1.5:
                suggestions['attention_improvement'].append("專注度偏低，建議檢查學習環境是否有干擾因素")
                suggestions['attention_improvement'].append("可以嘗試使用白噪音或輕音樂幫助集中注意力")
+               suggestions['schedule'].append("建議縮短每次學習時間至15-20分鐘，增加休息頻率")
            elif avg_attention < 2.5:
-               suggestions['attention_improvement'].append("專注度中等，建議使用計時器設定專注時段")
-               suggestions['attention_improvement'].append("學習前做5分鐘的深呼吸或伸展運動")
+               suggestions['attention_improvement'].append("專注度中等，建議學習前做5分鐘的深呼吸或伸展運動")
+               suggestions['schedule'].append("目前的25分鐘學習時段很適合，建議維持這個節奏")
            else:
-               suggestions['attention_improvement'].append("專注度表現優秀！繼續保持良好的學習習慣")
-               suggestions['attention_improvement'].append("可以嘗試更有挑戰性的學習內容")
+               suggestions['attention_improvement'].append("專注度表現優秀！可以嘗試更有挑戰性的學習內容")
+               suggestions['schedule'].append("可以考慮延長學習時段至30-35分鐘，但仍要保持適當休息")
        
-       # 學習時間分析 - 修正時間顯示問題
+       # 學習時間分析
        study_hours = {}
        for session in study_sessions:
            hour = session.start_time.hour
@@ -692,25 +822,28 @@ def generate_comprehensive_suggestions(child, study_sessions):
                study_hours[hour].append(session.avg_attention)
        
        if study_hours:
+           # 找出專注度最高的時段
            best_hour_data = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
            best_hour = best_hour_data[0]
-           time_period = ""
-           if 6 <= best_hour < 9:
-               time_period = "早上"
-           elif 9 <= best_hour < 12:
-               time_period = "上午"
-           elif 12 <= best_hour < 14:
-               time_period = "中午"
-           elif 14 <= best_hour < 18:
-               time_period = "下午"
-           elif 18 <= best_hour < 21:
-               time_period = "傍晚"
-           else:
-               time_period = "晚上"
            
-           suggestions['schedule'].append(f"您的孩子在{time_period}({best_hour}點)學習時專注度最高，建議安排重要科目在這個時段")
+           if 6 <= best_hour < 9:
+               suggestions['schedule'].append("您的孩子在早上(6-9點)專注度最高，建議安排重要科目在這個時段")
+           elif 9 <= best_hour < 12:
+               suggestions['schedule'].append("您的孩子在上午(9-12點)專注度最高，建議安排重要科目在這個時段")
+           elif 14 <= best_hour < 17:
+               suggestions['schedule'].append("您的孩子在下午(14-17點)專注度最高，建議安排重要科目在這個時段")
+           elif 19 <= best_hour < 22:
+               suggestions['schedule'].append("您的孩子在晚上(19-22點)專注度最高，建議安排重要科目在這個時段")
+           
+           # 根據年齡給予時間規劃建議
+           if child.age <= 10:
+               suggestions['schedule'].append("建議避免在晚上8點後進行需要高度專注的學習")
+           elif child.age <= 15:
+               suggestions['schedule'].append("可以在晚上9點前完成主要學習任務，之後進行輕鬆的複習")
+           else:
+               suggestions['schedule'].append("高中生可以適度延長晚間學習時間，但要確保充足睡眠")
        
-       # 多元化科目建議
+       # 科目專屬建議
        subject_performance = {}
        for session in study_sessions:
            if session.avg_attention:
@@ -723,98 +856,22 @@ def generate_comprehensive_suggestions(child, study_sessions):
            subject_name = SUBJECTS.get(subject, subject)
            
            if avg_perf < 2:
-               # 根據教育階段和科目提供不同建議
                if subject == 'math':
                    if child.education_stage == 'elementary':
                        suggestions['subject_specific'].append(f"{subject_name}需要加強，建議使用數學遊戲和實物教具輔助學習")
-                   elif child.education_stage == 'middle':
+                   else:
                        suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做基礎練習題，建立數學邏輯思維")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議分章節複習，多做歷屆考題練習")
                elif subject == 'science':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過實驗和觀察增加學習興趣")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議結合生活實例理解科學概念")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做實驗報告和科學推理練習")
-               elif subject == 'language':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多閱讀故事書和練習寫作")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議增加閱讀量並練習文章分析")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入研讀經典文學作品")
-               elif subject == 'social':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過地圖和圖片學習地理歷史")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議關注時事並學會分析社會現象")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入了解政治經濟制度")
-               elif subject == 'art':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多元嘗試繪畫、手工等創作活動")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議學習基礎美術技巧和藝術鑑賞")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議培養個人藝術風格和創作理念")
-               elif subject == 'cs':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議從圖形化程式設計工具開始學習")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議學習基礎程式語言和邏輯思維")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議深入學習演算法和資料結構")
+                   suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過實驗和觀察增加學習興趣")
+               else:
+                   suggestions['subject_specific'].append(f"{subject_name}需要加強，建議增加練習時間並找出學習困難點")
            else:
-               # 表現良好的科目也根據教育階段給予不同建議
-               if subject == 'math':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試數學競賽題目增加挑戰")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議學習更進階的數學概念")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習微積分等大學預備課程")
-               elif subject == 'science':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參與科學展覽或實驗競賽")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議深入學習感興趣的科學領域")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以參與科學研究專題")
-               elif subject == 'language':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試創作短篇故事")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議閱讀更多文學作品")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試文學創作或評論")
-               elif subject == 'social':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以多了解不同國家的文化")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參與社會議題討論")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以深入研究政治經濟理論")
-               elif subject == 'art':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試不同的藝術媒材")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參加藝術比賽或展覽")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以考慮藝術相關的職業發展")
-               elif subject == 'cs':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習更複雜的程式專案")
-                   elif child.education_stage == 'middle':
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，建議參加程式設計競賽")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}表現良好，可以學習軟體開發和系統設計")
+               suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試更進階的內容或協助其他科目學習")
    
    return suggestions
 
 def create_comprehensive_report(child, study_sessions):
-   """建立全面的PDF報告"""
+   """創建包含數據分析和智慧建議的完整PDF報告"""
    filename = f'report_{child.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
    filepath = os.path.join('reports', filename)
    
@@ -827,9 +884,9 @@ def create_comprehensive_report(child, study_sessions):
    # 設定樣式
    styles = getSampleStyleSheet()
    
-   # 自定義樣式以支援中文
+   # 自定義樣式
    title_style = ParagraphStyle(
-       'ChineseTitle',
+       'CustomTitle',
        parent=styles['Title'],
        fontName='Helvetica-Bold',
        fontSize=24,
@@ -839,7 +896,7 @@ def create_comprehensive_report(child, study_sessions):
    )
    
    heading_style = ParagraphStyle(
-       'ChineseHeading',
+       'CustomHeading',
        parent=styles['Heading1'],
        fontName='Helvetica-Bold',
        fontSize=16,
@@ -848,7 +905,7 @@ def create_comprehensive_report(child, study_sessions):
    )
    
    normal_style = ParagraphStyle(
-       'ChineseNormal',
+       'CustomNormal',
        parent=styles['Normal'],
        fontName='Helvetica',
        fontSize=12,
@@ -860,7 +917,6 @@ def create_comprehensive_report(child, study_sessions):
    story.append(Spacer(1, 30))
    
    # 基本資訊表格
-   user = User.query.get(child.user_id)
    basic_info = [
        ['Child Name', child.nickname],
        ['Gender', GENDERS.get(child.gender, child.gender)],
@@ -884,8 +940,8 @@ def create_comprehensive_report(child, study_sessions):
    story.append(info_table)
    story.append(PageBreak())
    
-   # 學習統計分析
-   story.append(Paragraph('Learning Statistics Analysis', heading_style))
+   # 數據分析部分
+   story.append(Paragraph('Data Analysis', heading_style))
    story.append(Spacer(1, 20))
    
    if study_sessions:
@@ -968,23 +1024,23 @@ def create_comprehensive_report(child, study_sessions):
        story.append(subject_table)
        story.append(PageBreak())
    
-   # 個人化建議
+   # 智慧建議部分
    story.append(Paragraph('Personalized Learning Recommendations', heading_style))
    story.append(Spacer(1, 20))
    
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
    # 建議分類顯示
+   category_names = {
+       'age_appropriate': 'Age-Appropriate Recommendations',
+       'learning_style': 'Learning Style Suggestions',
+       'schedule': 'Schedule Optimization',
+       'attention_improvement': 'Attention Improvement Tips',
+       'subject_specific': 'Subject-Specific Advice'
+   }
+   
    for category, items in suggestions.items():
        if items:
-           category_names = {
-               'learning_style': 'Learning Style Suggestions',
-               'schedule': 'Schedule Optimization',
-               'subject_specific': 'Subject-Specific Advice',
-               'attention_improvement': 'Attention Improvement Tips',
-               'age_appropriate': 'Age-Appropriate Recommendations'
-           }
-           
            story.append(Paragraph(category_names.get(category, category), heading_style))
            story.append(Spacer(1, 10))
            
@@ -998,74 +1054,6 @@ def create_comprehensive_report(child, study_sessions):
    doc.build(story)
    return filepath
 
-def create_attention_chart(emotion_data, session_id):
-   """建立專注度趨勢圖"""
-   if not CHARTS_AVAILABLE:
-       return None
-       
-   try:
-       times = [(data.timestamp - emotion_data[0].timestamp).total_seconds() / 60 for data in emotion_data]
-       attention_levels = [data.attention_level for data in emotion_data]
-       
-       plt.figure(figsize=(10, 6))
-       plt.plot(times, attention_levels, 'b-', linewidth=2, markersize=4, marker='o')
-       plt.title('Attention Level Trend', fontsize=16, fontweight='bold')
-       plt.xlabel('Time (minutes)', fontsize=12)
-       plt.ylabel('Attention Level', fontsize=12)
-       plt.ylim(0, 4)
-       plt.grid(True, alpha=0.3)
-       plt.tight_layout()
-       
-       chart_path = f'reports/attention_chart_{session_id}.png'
-       plt.savefig(chart_path, dpi=300, bbox_inches='tight')
-       plt.close()
-       
-       return chart_path
-   except Exception as e:
-       print(f"建立專注度圖表時發生錯誤: {e}")
-       return None
-
-def create_emotion_distribution_chart(emotion_data, session_id):
-   """建立情緒分布圖"""
-   if not CHARTS_AVAILABLE:
-       return None
-       
-   try:
-       emotions = [data.emotion for data in emotion_data if data.emotion]
-       emotion_counts = {}
-       
-       for emotion in emotions:
-           emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
-       
-       if not emotion_counts:
-           return None
-       
-       plt.figure(figsize=(10, 6))
-       bars = plt.bar(emotion_counts.keys(), emotion_counts.values(), 
-                      color=['#3498DB', '#2ECC71', '#E74C3C', '#F39C12', '#9B59B6', '#1ABC9C'])
-       plt.title('Emotion Distribution', fontsize=16, fontweight='bold')
-       plt.xlabel('Emotion Type', fontsize=12)
-       plt.ylabel('Frequency', fontsize=12)
-       plt.xticks(rotation=45)
-       
-       # 添加數值標籤
-       for bar in bars:
-           height = bar.get_height()
-           plt.text(bar.get_x() + bar.get_width()/2., height,
-                   f'{int(height)}',
-                   ha='center', va='bottom')
-       
-       plt.tight_layout()
-       
-       chart_path = f'reports/emotion_chart_{session_id}.png'
-       plt.savefig(chart_path, dpi=300, bbox_inches='tight')
-       plt.close()
-       
-       return chart_path
-   except Exception as e:
-       print(f"建立情緒分布圖表時發生錯誤: {e}")
-       return None
-
 @app.route('/logout')
 def logout():
    """登出功能"""
@@ -1075,4 +1063,6 @@ def logout():
 if __name__ == '__main__':
    with app.app_context():
        db.create_all()
+       # 執行資料庫升級檢查
+       upgrade_database()
    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

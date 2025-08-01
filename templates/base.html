@@ -107,12 +107,25 @@
                                 <i class="fas fa-home me-1"></i>學習中心
                             </a>
                         {% endif %}
-                        <span class="navbar-text me-3">
-                            <i class="fas fa-user me-1 text-primary"></i>{{ session.username }}
-                        </span>
-                        <a class="nav-link text-primary" href="{{ url_for('logout') }}">
-                            <i class="fas fa-sign-out-alt me-1"></i>登出
-                        </a>
+                        <div class="dropdown">
+                            <a class="nav-link dropdown-toggle text-primary" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user me-1"></i>{{ session.username }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editProfileModal">
+                                    <i class="fas fa-edit me-2"></i>編輯個人資料
+                                </a></li>
+                                {% if session.child_nickname %}
+                                <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#editChildModal">
+                                    <i class="fas fa-child me-2"></i>編輯小孩資料
+                                </a></li>
+                                {% endif %}
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="fas fa-sign-out-alt me-2"></i>登出
+                                </a></li>
+                            </ul>
+                        </div>
                     {% else %}
                         <a class="nav-link text-primary" href="{{ url_for('login') }}">
                             <i class="fas fa-sign-in-alt me-1"></i>登入
@@ -130,8 +143,204 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- 編輯個人資料模態框 -->
+    {% if session.username %}
+    <div class="modal fade" id="editProfileModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">編輯個人資料</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editProfileForm">
+                        <div class="mb-3">
+                            <label for="editUsername" class="form-label">使用者名稱</label>
+                            <input type="text" class="form-control" id="editUsername" value="{{ session.username }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editEmail" class="form-label">電子郵件</label>
+                            <input type="email" class="form-control" id="editEmail" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editPassword" class="form-label">新密碼（留空表示不更改）</label>
+                            <input type="password" class="form-control" id="editPassword">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateProfile()">更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編輯小孩資料模態框 -->
+    {% if session.child_nickname %}
+    <div class="modal fade" id="editChildModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">編輯小孩資料</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editChildForm">
+                        <div class="mb-3">
+                            <label for="editChildNickname" class="form-label">暱稱</label>
+                            <input type="text" class="form-control" id="editChildNickname" value="{{ session.child_nickname }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">性別</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="editGender" id="editMale" value="male">
+                                <label class="btn btn-outline-primary" for="editMale">
+                                    <i class="fas fa-mars me-1"></i>男生
+                                </label>
+                                <input type="radio" class="btn-check" name="editGender" id="editFemale" value="female">
+                                <label class="btn btn-outline-danger" for="editFemale">
+                                    <i class="fas fa-venus me-1"></i>女生
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChildAge" class="form-label">年齡</label>
+                            <input type="number" class="form-control" id="editChildAge" min="6" max="18" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editEducationStage" class="form-label">教育階段</label>
+                            <select class="form-select" id="editEducationStage" required>
+                                <option value="elementary">國小</option>
+                                <option value="middle">國中</option>
+                                <option value="high">高中</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="updateChildProfile()">更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    
+    <!-- 個人資料編輯相關JavaScript -->
+    {% if session.username %}
+    <script>
+    // 更新個人資料
+    async function updateProfile() {
+        const username = document.getElementById('editUsername').value;
+        const email = document.getElementById('editEmail').value;
+        const password = document.getElementById('editPassword').value;
+        
+        try {
+            const response = await fetch('/update_user_profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    email: email,
+                    password: password || null
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('個人資料更新成功！');
+                location.reload();
+            } else {
+                alert('更新失敗：' + result.message);
+            }
+        } catch (error) {
+            alert('更新失敗，請稍後再試');
+        }
+    }
+
+    {% if session.child_nickname %}
+    // 更新小孩資料
+    async function updateChildProfile() {
+        const nickname = document.getElementById('editChildNickname').value;
+        const gender = document.querySelector('input[name="editGender"]:checked').value;
+        const age = parseInt(document.getElementById('editChildAge').value);
+        const educationStage = document.getElementById('editEducationStage').value;
+        
+        if (age < 6 || age > 18) {
+            alert('年齡必須在6-18歲之間');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/update_child_profile', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    child_id: {{ session.child_id }},
+                    nickname: nickname,
+                    gender: gender,
+                    age: age,
+                    education_stage: educationStage
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('小孩資料更新成功！');
+                location.reload();
+            } else {
+                alert('更新失敗：' + result.message);
+            }
+        } catch (error) {
+            alert('更新失敗，請稍後再試');
+        }
+    }
+
+    // 年齡輸入驗證
+    document.addEventListener('DOMContentLoaded', function() {
+        const ageInput = document.getElementById('editChildAge');
+        if (ageInput) {
+            ageInput.addEventListener('input', function() {
+                let age = parseInt(this.value);
+                if (age < 6) {
+                    this.value = 6;
+                } else if (age > 18) {
+                    this.value = 18;
+                }
+            });
+            
+            ageInput.addEventListener('blur', function() {
+                let age = parseInt(this.value);
+                if (isNaN(age) || age < 6) {
+                    this.value = 6;
+                } else if (age > 18) {
+                    this.value = 18;
+                }
+            });
+            
+            // 防止輸入非數字
+            ageInput.addEventListener('keypress', function(e) {
+                if (e.which < 48 || e.which > 57) {
+                    e.preventDefault();
+                }
+            });
+        }
+    });
+    {% endif %}
+    </script>
+    {% endif %}
+    
     {% block scripts %}{% endblock %}
 </body>
 </html>

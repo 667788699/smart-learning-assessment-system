@@ -1,13 +1,117 @@
-// static/script.js
+// 更新情緒統計
+function updateEmotionCounts(emotion) {
+    if (currentEmotionCounts.hasOwnProperty(emotion)) {
+        currentEmotionCounts[emotion]++;
+        
+        // 更新情緒分類統計
+        updateEmotionCategories(emotion);
+        
+        // 更新當前主要情緒
+        updateCurrentMainEmotion();
+        
+        // 更新圖表
+        updateEmotionChart();
+        
+        // 更新當前情緒顯示
+        updateCurrentEmotionDisplay(emotion);
+    }
+}
+
+// 更新情緒分類統計
+function updateEmotionCategories(emotion) {
+    if (emotion === 'happy' || emotion === 'surprise') {
+        emotionCategories.positive++;
+    } else if (emotion === 'no emotion') {
+        emotionCategories.neutral++;
+    } else {
+        emotionCategories.negative++;
+    }
+    
+    // 更新統計顯示
+    updateEmotionStatsDisplay();
+}
+
+// 更新當前主要情緒
+function updateCurrentMainEmotion() {
+    let maxCount = 0;
+    let mainEmotion = 'no emotion';
+    
+    for (const [emotion, count] of Object.entries(currentEmotionCounts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            mainEmotion = emotion;
+        }
+    }
+    
+    currentMainEmotion = mainEmotion;
+}
+
+// 更新當前情緒顯示
+function updateCurrentEmotionDisplay(latestEmotion) {
+    const iconElement = document.getElementById('currentEmotionIcon');
+    const labelElement = document.getElementById('currentEmotionLabel');
+    
+    if (iconElement && labelElement) {
+        const emotionData = EMOTION_ICONS[latestEmotion] || EMOTION_ICONS['no emotion'];
+        
+        // 更新圖標
+        iconElement.innerHTML = `<i class="${emotionData.icon} fa-2x"></i>`;
+        iconElement.style.background = `linear-gradient(45deg, ${emotionData.color}, ${adjustColor(emotionData.color, -20)})`;
+        
+        // 更新標籤
+        labelElement.textContent = EMOTION_LABELS_ZH[latestEmotion] || latestEmotion;
+        
+        // 添加動畫效果
+        iconElement.style.animation = 'none';
+        setTimeout(() => {
+            iconElement.style.animation = 'emotionPulse 2s infinite';
+        }, 10);
+    }
+}
+
+// 更新情緒統計顯示
+function updateEmotionStatsDisplay() {
+    const positiveElement = document.getElementById('positiveCount');
+    const neutralElement = document.getElementById('neutralCount');
+    const negativeElement = document.getElementById('negativeCount');
+    
+    if (positiveElement) positiveElement.textContent = emotionCategories.positive;
+    if (neutralElement) neutralElement.textContent = emotionCategories.neutral;
+    if (negativeElement) negativeElement.textContent = emotionCategories.negative;
+}
+
+// 顏色調整輔助函數
+function adjustColor(color, amount) {
+    const usePound = color[0] === '#';
+    const col = usePound ? color.slice(1) : color;
+    const num = parseInt(col, 16);
+    let r = (num >> 16) + amount;
+    let g = (num >> 8 & 0x00FF) + amount;
+    let b = (num & 0x0000FF) + amount;
+    r = r > 255 ? 255 : r < 0 ? 0 : r;
+    g = g > 255 ? 255 : g < 0 ? 0 : g;
+    b = b > 255 ? 255 : b < 0 ? 0 : b;
+    return (usePound ? '#' : '') + (r << 16 | g << 8 | b).toString(16).padStart(6, '0');
+}
+
+// 更新情緒圖表
+function updateEmotionChart() {
+    if (emotionChart) {
+        emotionChart.data.datasets[0].data = Object.values(currentEmotionCounts);
+        emotionChart.update('active'); // 使用動畫更新
+    }
+}// static/script.js
 // 全域變數
 let video, canvas, ctx;
 let yoloModel = null;
 let emotionModel = null;
 let isDetecting = false;
+let isPaused = false;
 let currentSessionId = null;
 let studyTimer = null;
 let detectionInterval = null;
 let startTime = null;
+let pausedTime = 0;
 let totalDuration = 0;
 let emotionData = [];
 let detectionCount = 0;
@@ -15,9 +119,53 @@ let validDetections = 0;
 let noFaceWarningCount = 0;
 let multipleFaceWarningCount = 0;
 let faceDetectionModel = null;
+let emotionChart = null;
 
-// 情緒標籤對應
-const EMOTION_LABELS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise'];
+// 情緒標籤對應 - 修正為正確的七種情緒
+const EMOTION_LABELS = ['anger', 'disgust', 'fear', 'happy', 'no emotion', 'sad', 'surprise'];
+
+// 即時情緒統計
+let currentEmotionCounts = {
+    'anger': 0,
+    'disgust': 0,
+    'fear': 0,
+    'happy': 0,
+    'no emotion': 0,
+    'sad': 0,
+    'surprise': 0
+};
+
+// 情緒分類統計
+let emotionCategories = {
+    positive: 0,  // happy, surprise
+    neutral: 0,   // no emotion
+    negative: 0   // anger, disgust, fear, sad
+};
+
+// 當前主要情緒
+let currentMainEmotion = 'no emotion';
+
+// 情緒圖標對應
+const EMOTION_ICONS = {
+    'anger': { icon: 'fas fa-angry', color: '#E74C3C' },
+    'disgust': { icon: 'fas fa-grimace', color: '#8E44AD' },
+    'fear': { icon: 'fas fa-dizzy', color: '#2C3E50' },
+    'happy': { icon: 'fas fa-smile', color: '#F1C40F' },
+    'no emotion': { icon: 'fas fa-meh', color: '#95A5A6' },
+    'sad': { icon: 'fas fa-sad-tear', color: '#3498DB' },
+    'surprise': { icon: 'fas fa-surprise', color: '#E67E22' }
+};
+
+// 情緒標籤中文對應
+const EMOTION_LABELS_ZH = {
+    'anger': '生氣',
+    'disgust': '厭惡', 
+    'fear': '恐懼',
+    'happy': '開心',
+    'no emotion': '平靜',
+    'sad': '難過',
+    'surprise': '驚訝'
+};
 
 // 頁面載入完成後初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -67,6 +215,7 @@ async function initStudyPage() {
     await initCamera();
     initStudyControls();
     await loadModels();
+    initEmotionChart();
 }
 
 // 處理註冊表單提交
@@ -106,7 +255,7 @@ async function handleRegister(event) {
         const result = await response.json();
         
         if (result.success) {
-            showMessage('註冊成功！請登入', 'success');
+            showMessage('註冊成功！即將跳轉到登入頁面...', 'success');
             setTimeout(() => {
                 window.location.href = '/login';
             }, 2000);
@@ -124,6 +273,11 @@ async function handleLogin(event) {
     
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
+    const loginBtn = document.getElementById('loginBtn');
+    
+    // 禁用按鈕防止重複提交
+    loginBtn.disabled = true;
+    loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>登入中...';
     
     try {
         const response = await fetch('/login', {
@@ -140,25 +294,47 @@ async function handleLogin(event) {
         const result = await response.json();
         
         if (result.success) {
-            showMessage('登入成功！', 'success');
+            showMessage('登入成功！即將跳轉...', 'success');
             setTimeout(() => {
                 window.location.href = '/child_selection';
-            }, 1000);
+            }, 1500);
         } else {
             showMessage(result.message);
+            // 重新啟用按鈕
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>登入';
         }
     } catch (error) {
         showMessage('登入失敗，請稍後再試');
+        // 重新啟用按鈕
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>登入';
     }
 }
 
 // 顯示訊息
 function showMessage(message, type = 'error') {
     const modal = document.getElementById('messageModal');
+    const modalTitle = document.getElementById('modalTitle');
     const modalMessage = document.getElementById('modalMessage');
     
     if (modal && modalMessage) {
         modalMessage.textContent = message;
+        
+        // 設定標題和樣式
+        if (modalTitle) {
+            if (type === 'success') {
+                modalTitle.textContent = '成功';
+                modalTitle.className = 'modal-title text-success';
+            } else if (type === 'error') {
+                modalTitle.textContent = '錯誤';
+                modalTitle.className = 'modal-title text-danger';
+            } else {
+                modalTitle.textContent = '系統訊息';
+                modalTitle.className = 'modal-title';
+            }
+        }
+        
         const bootstrapModal = new bootstrap.Modal(modal);
         bootstrapModal.show();
     } else {
@@ -217,7 +393,7 @@ function initStudyControls() {
     }
     
     if (pauseButton) {
-        pauseButton.addEventListener('click', pauseStudySession);
+        pauseButton.addEventListener('click', togglePauseStudySession);
     }
     
     if (endButton) {
@@ -249,6 +425,104 @@ function initStudyControls() {
             }
         });
     }
+}
+
+// 初始化情緒圖表
+function initEmotionChart() {
+    const canvas = document.getElementById('emotionChart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    emotionChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: EMOTION_LABELS.map(emotion => EMOTION_LABELS_ZH[emotion] || emotion),
+            datasets: [{
+                label: '檢測次數',
+                data: Object.values(currentEmotionCounts),
+                backgroundColor: [
+                    '#E74C3C', // anger - 紅色
+                    '#8E44AD', // disgust - 紫色
+                    '#2C3E50', // fear - 深灰色
+                    '#F1C40F', // happy - 黃色
+                    '#95A5A6', // no emotion - 灰色
+                    '#3498DB', // sad - 藍色
+                    '#E67E22'  // surprise - 橙色
+                ],
+                borderColor: [
+                    '#C0392B',
+                    '#7D3C98',
+                    '#1B2631',
+                    '#D4AC0D',
+                    '#839192',
+                    '#2980B9',
+                    '#CA6F1E'
+                ],
+                borderWidth: 2,
+                borderRadius: 4,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.8)',
+                    titleColor: '#fff',
+                    bodyColor: '#fff',
+                    borderColor: '#42a5f5',
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    callbacks: {
+                        title: function(context) {
+                            return context[0].label;
+                        },
+                        label: function(context) {
+                            return `檢測次數: ${context.parsed.y}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1,
+                        color: '#666',
+                        font: {
+                            size: 10
+                        }
+                    },
+                    grid: {
+                        color: 'rgba(0,0,0,0.1)',
+                        drawBorder: false
+                    }
+                },
+                x: {
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        color: '#666',
+                        font: {
+                            size: 10
+                        }
+                    },
+                    grid: {
+                        display: false
+                    }
+                }
+            },
+            animation: {
+                duration: 800,
+                easing: 'easeInOutQuart'
+            }
+        }
+    });
 }
 
 // 載入 AI 模型
@@ -343,6 +617,8 @@ async function startStudySession() {
             currentSessionId = result.session_id;
             totalDuration = duration;
             startTime = new Date();
+            pausedTime = 0;
+            isPaused = false;
             
             // 重置計數器
             noFaceWarningCount = 0;
@@ -351,10 +627,22 @@ async function startStudySession() {
             detectionCount = 0;
             validDetections = 0;
             
+            // 重置情緒統計
+            for (let emotion in currentEmotionCounts) {
+                currentEmotionCounts[emotion] = 0;
+            }
+            emotionCategories = { positive: 0, neutral: 0, negative: 0 };
+            currentMainEmotion = 'no emotion';
+            
+            updateEmotionChart();
+            updateCurrentEmotionDisplay('no emotion');
+            updateEmotionStatsDisplay();
+            
             // 隱藏設定卡片，顯示狀態卡片
             document.getElementById('timeSettingCard').style.display = 'none';
             document.getElementById('statusCard').style.display = 'block';
             document.getElementById('statsCard').style.display = 'block';
+            document.getElementById('emotionCard').style.display = 'block';
             
             // 開始計時器和檢測
             startTimer(duration * 60); // 轉換為秒
@@ -378,11 +666,13 @@ function startTimer(totalSeconds) {
     updateTimerDisplay(remainingSeconds, totalSeconds);
     
     studyTimer = setInterval(() => {
-        remainingSeconds--;
-        updateTimerDisplay(remainingSeconds, totalSeconds);
-        
-        if (remainingSeconds <= 0) {
-            endStudySession();
+        if (!isPaused) {
+            remainingSeconds--;
+            updateTimerDisplay(remainingSeconds, totalSeconds);
+            
+            if (remainingSeconds <= 0) {
+                endStudySession();
+            }
         }
     }, 1000);
 }
@@ -410,10 +700,10 @@ function updateTimerDisplay(remainingSeconds, totalSeconds) {
 // 開始人臉檢測
 function startFaceDetection() {
     detectionInterval = setInterval(() => {
-        if (isDetecting && video && canvas) {
+        if (isDetecting && !isPaused && video && canvas) {
             detectFaceAndEmotion();
         }
-    }, 1000); // 每2秒檢測一次
+    }, 1000); // 每秒檢測一次
 }
 
 // 人臉檢測和情緒辨識
@@ -443,6 +733,9 @@ async function detectFaceAndEmotion() {
         
         // 更新專注度指示器
         updateAttentionIndicator(detectionResult.attention);
+        
+        // 更新情緒統計
+        updateEmotionCounts(detectionResult.emotion);
         
         // 記錄數據
         await recordEmotionData(detectionResult);
@@ -643,16 +936,17 @@ async function performEnhancedSimulation() {
 function simulateEmotion() {
     // 模擬更真實的情緒分布
     const emotionWeights = {
-        'neutral': 0.45,
+        'no emotion': 0.45,
         'happy': 0.15,
-        'focused': 0.25,
-        'confused': 0.08,
-        'tired': 0.04,
-        'surprised': 0.03
+        'anger': 0.08,
+        'sad': 0.08,
+        'surprise': 0.08,
+        'fear': 0.08,
+        'disgust': 0.08
     };
     
     let randomValue = Math.random();
-    let emotion = 'neutral';
+    let emotion = 'no emotion';
     
     for (const [emo, weight] of Object.entries(emotionWeights)) {
         randomValue -= weight;
@@ -669,14 +963,13 @@ function simulateEmotion() {
 // 根據情緒計算專注度
 function calculateAttentionFromEmotion(emotion, confidence) {
     const attentionMap = {
-        'neutral': 3,
-        'focused': 3,
+        'no emotion': 3,
         'happy': 2,
-        'surprised': 2,
-        'confused': 1,
-        'tired': 1,
-        'angry': 1,
-        'sad': 1
+        'surprise': 2,
+        'anger': 1,
+        'sad': 1,
+        'fear': 1,
+        'disgust': 1
     };
     
     let baseAttention = attentionMap[emotion] || 2;
@@ -689,6 +982,22 @@ function calculateAttentionFromEmotion(emotion, confidence) {
     }
     
     return Math.round(baseAttention);
+}
+
+// 更新情緒統計
+function updateEmotionCounts(emotion) {
+    if (currentEmotionCounts.hasOwnProperty(emotion)) {
+        currentEmotionCounts[emotion]++;
+        updateEmotionChart();
+    }
+}
+
+// 更新情緒圖表
+function updateEmotionChart() {
+    if (emotionChart) {
+        emotionChart.data.datasets[0].data = Object.values(currentEmotionCounts);
+        emotionChart.update('active'); // 使用動畫更新
+    }
 }
 
 // 顯示檢測警告
@@ -785,49 +1094,29 @@ function updateStatistics() {
     }
 }
 
-// 暫停學習
-function pauseStudySession() {
-    if (isDetecting) {
-        isDetecting = false;
-        clearInterval(studyTimer);
-        clearInterval(detectionInterval);
-        
-        const pauseButton = document.getElementById('pauseButton');
-        if (pauseButton) {
-            pauseButton.innerHTML = '<i class="fas fa-play me-2"></i>繼續';
-            pauseButton.onclick = resumeStudySession;
-        }
-    }
-}
-
-// 繼續學習
-function resumeStudySession() {
-    if (!isDetecting) {
-        isDetecting = true;
-        
-        // 重新開始檢測
-        startFaceDetection();
-        
-        // 重新計算剩餘時間並開始計時
-        const currentTime = new Date();
-        const elapsedMinutes = (currentTime - startTime) / (1000 * 60);
-        const remainingMinutes = totalDuration - elapsedMinutes;
-        
-        if (remainingMinutes > 0) {
-            startTimer(Math.floor(remainingMinutes * 60));
-        }
-        
-        const pauseButton = document.getElementById('pauseButton');
-        if (pauseButton) {
-            pauseButton.innerHTML = '<i class="fas fa-pause me-2"></i>暫停';
-            pauseButton.onclick = pauseStudySession;
-        }
+// 暫停/繼續學習 - 修正暫停功能
+function togglePauseStudySession() {
+    const pauseButton = document.getElementById('pauseButton');
+    
+    if (!isPaused) {
+        // 暫停
+        isPaused = true;
+        pauseButton.innerHTML = '<i class="fas fa-play me-2"></i>繼續';
+        pauseButton.classList.remove('btn-warning');
+        pauseButton.classList.add('btn-success');
+    } else {
+        // 繼續
+        isPaused = false;
+        pauseButton.innerHTML = '<i class="fas fa-pause me-2"></i>暫停';
+        pauseButton.classList.remove('btn-success');
+        pauseButton.classList.add('btn-warning');
     }
 }
 
 // 結束學習
 async function endStudySession() {
     isDetecting = false;
+    isPaused = false;
     clearInterval(studyTimer);
     clearInterval(detectionInterval);
     
@@ -860,7 +1149,7 @@ function showSessionCompleteModal() {
     const finalDetectionsElement = document.getElementById('finalDetections');
     
     if (finalDurationElement) {
-        const actualDuration = Math.floor((new Date() - startTime) / (1000 * 60));
+        const actualDuration = Math.floor((new Date() - startTime - pausedTime) / (1000 * 60));
         finalDurationElement.textContent = `${actualDuration} 分鐘`;
     }
     
@@ -911,6 +1200,14 @@ async function deleteStudySession(sessionId) {
 
 // 載入必要的外部庫
 if (window.location.pathname.includes('/study/')) {
+    // 載入 Chart.js
+    const chartScript = document.createElement('script');
+    chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+    chartScript.onload = () => {
+        console.log('Chart.js 載入完成');
+    };
+    document.head.appendChild(chartScript);
+    
     // 載入 MediaPipe Face Detection
     const mediapipeScript = document.createElement('script');
     mediapipeScript.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js';

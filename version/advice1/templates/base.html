@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}兒少智慧學習評估系統{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <style>
+        /* 確保文字清晰可見 - 淺色系 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "微軟正黑體", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #2c3e50;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background-color: #f8f9fc;
+        }
+        
+        /* 提升文字對比度 */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+            color: #1976d2;
+        }
+        
+        .text-muted {
+            color: #546e7a !important;
+        }
+        
+        /* 導航列樣式優化 - 淺色系 */
+        .navbar {
+            box-shadow: 0 2px 4px rgba(0,0,0,.08);
+            padding: 1rem 0;
+        }
+        
+        .navbar-brand {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        
+        /* 卡片樣式優化 */
+        .card {
+            border: 1px solid rgba(66, 165, 245, 0.125);
+            box-shadow: 0 2px 8px rgba(66, 165, 245, 0.08);
+        }
+        
+        /* 按鈕樣式優化 */
+        .btn {
+            font-weight: 500;
+            padding: 0.5rem 1.5rem;
+        }
+        
+        /* 表單控件優化 */
+        .form-control, .form-select {
+            font-size: 16px;
+            padding: 0.75rem 1rem;
+            border-color: #e3f2fd;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            border-color: #42a5f5;
+            box-shadow: 0 0 0 0.2rem rgba(66, 165, 245, 0.15);
+        }
+        
+        /* 進度條樣式 */
+        .progress {
+            height: 22px;
+            font-size: 14px;
+            font-weight: 600;
+            background-color: rgba(66, 165, 245, 0.1);
+        }
+        
+        .progress-bar {
+            line-height: 22px;
+        }
+        
+        /* 自定義顏色變數 */
+        :root {
+            --primary-color: #42a5f5;
+            --primary-dark: #1e88e5;
+            --success-color: #66bb6a;
+            --warning-color: #ffb74d;
+            --danger-color: #ef5350;
+            --info-color: #26c6da;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-brain me-2"></i>智慧學習評估系統
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav ms-auto">
+                    {% if session.username %}
+                        {% if session.child_nickname %}
+                            <span class="navbar-text me-3">
+                                <i class="fas fa-user-graduate me-1 text-primary"></i>{{ session.child_nickname }}
+                            </span>
+                            <a class="nav-link text-primary" href="{{ url_for('dashboard') }}">
+                                <i class="fas fa-home me-1"></i>學習中心
+                            </a>
+                        {% endif %}
+                        <span class="navbar-text me-3">
+                            <i class="fas fa-user me-1 text-primary"></i>{{ session.username }}
+                        </span>
+                        <a class="nav-link text-primary" href="{{ url_for('logout') }}">
+                            <i class="fas fa-sign-out-alt me-1"></i>登出
+                        </a>
+                    {% else %}
+                        <a class="nav-link text-primary" href="{{ url_for('login') }}">
+                            <i class="fas fa-sign-in-alt me-1"></i>登入
+                        </a>
+                        <a class="nav-link text-primary" href="{{ url_for('register') }}">
+                            <i class="fas fa-user-plus me-1"></i>註冊
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid py-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

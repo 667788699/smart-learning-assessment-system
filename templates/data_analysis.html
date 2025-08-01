@@ -372,7 +372,7 @@ function createDayElement(day, isOtherMonth) {
         
         dayElement.addEventListener('click', () => {
             if (calendarData[dateKey]) {
-                showCalendarDetail(dateKey, calendarData[dateKey]);
+                showCalendarDetail(dateKey, calendarData[dateKey].sessions);
             }
         });
     }
@@ -402,14 +402,14 @@ function updateCalendarView() {
     Object.keys(calendarData).forEach(dateKey => {
         const dayElement = document.querySelector(`[data-date="${dateKey}"]`);
         if (dayElement) {
+            const data = calendarData[dateKey];
             dayElement.classList.add('has-data');
+            dayElement.style.backgroundColor = data.color;
+            dayElement.style.color = '#fff';
+            dayElement.style.fontWeight = 'bold';
             
-            // 添加指示器
-            if (!dayElement.querySelector('.calendar-day-indicator')) {
-                const indicator = document.createElement('div');
-                indicator.className = 'calendar-day-indicator';
-                dayElement.appendChild(indicator);
-            }
+            // 添加工具提示
+            dayElement.title = `最佳科目：${data.best_subject}`;
         }
     });
 }
@@ -684,11 +684,11 @@ async function confirmReset() {
     height: calc(100% - 60px);
 }
 
-/* 日曆樣式 - 縮小版本 */
+/* 日曆樣式 - 放大版本 */
 .calendar-container {
     background: white;
     border-radius: 6px;
-    padding: 0.75rem;
+    padding: 1rem;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -698,12 +698,12 @@ async function confirmReset() {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
     flex-shrink: 0;
 }
 
 .calendar-header h6 {
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #333;
 }
@@ -711,14 +711,14 @@ async function confirmReset() {
 .calendar-nav {
     background: none;
     border: none;
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #42a5f5;
     cursor: pointer;
-    padding: 0.3rem;
+    padding: 0.5rem;
     border-radius: 50%;
     transition: all 0.3s ease;
-    width: 28px;
-    height: 28px;
+    width: 35px;
+    height: 35px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -731,19 +731,18 @@ async function confirmReset() {
 .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
+    gap: 3px;
     flex: 1;
-    max-height: 260px;
 }
 
 .calendar-day-header {
     text-align: center;
     font-weight: 600;
     color: #666;
-    padding: 0.3rem;
-    font-size: 0.7rem;
+    padding: 0.5rem;
+    font-size: 0.8rem;
     background: #f8f9fa;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 .calendar-day {
@@ -753,27 +752,22 @@ async function confirmReset() {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     transition: all 0.3s ease;
     position: relative;
-    min-height: 28px;
-    max-height: 35px;
-    border: 1px solid #f0f0f0;
+    min-height: 40px;
+    border: 1px solid #e0e0e0;
     background: white;
 }
 
 .calendar-day:hover {
-    background: #e3f2fd;
+    background: #e3f2fd !important;
+    transform: scale(1.05);
 }
 
 .calendar-day.has-data {
-    background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c8 100%);
-    border: 2px solid #66bb6a;
-    font-weight: bold;
-}
-
-.calendar-day.has-data:hover {
-    background: linear-gradient(135deg, #c8e6c8 0%, #a5d6a7 100%);
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .calendar-day.other-month {
@@ -783,16 +777,8 @@ async function confirmReset() {
 
 .calendar-day-number {
     font-weight: 500;
-    font-size: 0.7rem;
+    font-size: 0.85rem;
     line-height: 1;
-}
-
-.calendar-day-indicator {
-    width: 3px;
-    height: 3px;
-    background: #66bb6a;
-    border-radius: 50%;
-    margin-top: 1px;
 }
 
 /* 學習記錄項目樣式 */
@@ -856,23 +842,21 @@ canvas {
     }
     
     .calendar-grid {
-        gap: 1px;
-        max-height: 200px;
+        gap: 2px;
     }
     
     .calendar-day {
-        min-height: 22px;
-        max-height: 28px;
+        min-height: 30px;
     }
     
     .calendar-day-number {
-        font-size: 0.65rem;
+        font-size: 0.75rem;
     }
     
     .calendar-nav {
-        width: 24px;
-        height: 24px;
-        font-size: 0.8rem;
+        width: 30px;
+        height: 30px;
+        font-size: 0.9rem;
     }
     
     canvas {
@@ -891,16 +875,15 @@ canvas {
     }
     
     .calendar-day {
-        min-height: 20px;
-        max-height: 25px;
+        min-height: 25px;
     }
     
     .calendar-day-number {
-        font-size: 0.6rem;
+        font-size: 0.7rem;
     }
     
     .calendar-header h6 {
-        font-size: 0.8rem;
+        font-size: 0.9rem;
     }
     
     .chart-card .card-body {
