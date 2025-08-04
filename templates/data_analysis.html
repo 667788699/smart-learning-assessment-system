@@ -330,31 +330,34 @@ function initCalendar() {
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
     
-    // 添加空白日期（上個月的尾巴）
+    // 計算需要顯示多少週
+    const totalDays = startingDayOfWeek + daysInMonth;
+    const totalWeeks = Math.ceil(totalDays / 7);
+    const totalCells = totalWeeks * 7;
+    
+    // 添加上個月的日期
+    const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-        const prevDate = new Date(currentYear, currentMonth, -i);
-        const dayElement = createDayElement(prevDate.getDate(), true);
+        const dayElement = createDayElement(prevMonthLastDay - i, true, 'prev');
         calendarGrid.appendChild(dayElement);
     }
     
     // 添加當月日期
     for (let day = 1; day <= daysInMonth; day++) {
-        const dayElement = createDayElement(day, false);
+        const dayElement = createDayElement(day, false, 'current');
         calendarGrid.appendChild(dayElement);
     }
     
-    // 添加空白日期（下個月的開頭）
-    const totalCells = calendarGrid.children.length - 7; // 減去標題行
-    const remainingCells = 35 - totalCells; // 5週格子
-    
+    // 添加下個月的日期
+    const remainingCells = totalCells - (startingDayOfWeek + daysInMonth);
     for (let day = 1; day <= remainingCells; day++) {
-        const dayElement = createDayElement(day, true);
+        const dayElement = createDayElement(day, true, 'next');
         calendarGrid.appendChild(dayElement);
     }
 }
 
 // 創建日期元素
-function createDayElement(day, isOtherMonth) {
+function createDayElement(day, isOtherMonth, monthType) {
     const dayElement = document.createElement('div');
     dayElement.className = 'calendar-day';
     if (isOtherMonth) {
@@ -566,7 +569,7 @@ if (chartData.subjects && chartData.subjects.length > 0) {
     });
 }
 
-// 專注度趋勢圖
+// 專注度趨勢圖
 if (chartData.dates && chartData.dates.length > 0) {
     const attentionTrendCtx = document.getElementById('attentionTrendChart').getContext('2d');
     new Chart(attentionTrendCtx, {
@@ -684,11 +687,11 @@ async function confirmReset() {
     height: calc(100% - 60px);
 }
 
-/* 日曆樣式 - 放大版本 */
+/* 日曆樣式 - 確保顯示所有日期 */
 .calendar-container {
     background: white;
     border-radius: 6px;
-    padding: 1rem;
+    padding: 0.5rem;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -698,27 +701,28 @@ async function confirmReset() {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     flex-shrink: 0;
 }
 
 .calendar-header h6 {
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: #333;
+    margin: 0;
 }
 
 .calendar-nav {
     background: none;
     border: none;
-    font-size: 1rem;
+    font-size: 0.85rem;
     color: #42a5f5;
     cursor: pointer;
-    padding: 0.5rem;
+    padding: 0.25rem;
     border-radius: 50%;
     transition: all 0.3s ease;
-    width: 35px;
-    height: 35px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -731,54 +735,84 @@ async function confirmReset() {
 .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    gap: 3px;
+    gap: 1px;
     flex: 1;
+    align-content: start;
+    grid-auto-rows: 1fr;
+    max-height: 100%;
 }
 
 .calendar-day-header {
     text-align: center;
     font-weight: 600;
     color: #666;
-    padding: 0.5rem;
-    font-size: 0.8rem;
+    padding: 0.2rem 0;
+    font-size: 0.7rem;
     background: #f8f9fa;
-    border-radius: 4px;
+    border-radius: 2px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .calendar-day {
-    aspect-ratio: 1;
+    aspect-ratio: unset;
+    height: 28px;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.3s ease;
+    border-radius: 3px;
+    transition: all 0.2s ease;
     position: relative;
-    min-height: 40px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #f0f0f0;
     background: white;
+    font-size: 0.75rem;
 }
 
 .calendar-day:hover {
     background: #e3f2fd !important;
-    transform: scale(1.05);
+    transform: scale(1.1);
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .calendar-day.has-data {
     cursor: pointer;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    font-weight: 600;
+    border: none;
 }
 
 .calendar-day.other-month {
     color: #ccc;
     background: #fafafa;
+    opacity: 0.5;
 }
 
 .calendar-day-number {
     font-weight: 500;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     line-height: 1;
+}
+
+/* 確保日曆卡片有足夠高度 */
+.chart-card {
+    height: 380px;
+}
+
+.chart-card .card-body {
+    padding: 0.75rem;
+    height: calc(100% - 50px);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 日曆容器占滿剩餘空間 */
+.chart-card .calendar-container {
+    flex: 1;
+    min-height: 0;
 }
 
 /* 學習記錄項目樣式 */
@@ -821,6 +855,20 @@ canvas {
         max-height: 250px !important;
         height: 250px !important;
     }
+    
+    .calendar-container {
+        padding: 0.4rem;
+    }
+    
+    .calendar-day {
+        height: 26px;
+        font-size: 0.7rem;
+    }
+    
+    .calendar-day-header {
+        height: 22px;
+        font-size: 0.65rem;
+    }
 }
 
 @media (max-width: 768px) {
@@ -838,25 +886,38 @@ canvas {
     
     .chart-card {
         height: auto;
-        min-height: 300px;
+        min-height: 320px;
     }
     
     .calendar-grid {
-        gap: 2px;
+        gap: 0;
     }
     
     .calendar-day {
-        min-height: 30px;
+        height: 24px;
+        font-size: 0.65rem;
+        border-radius: 2px;
     }
     
     .calendar-day-number {
-        font-size: 0.75rem;
+        font-size: 0.65rem;
+    }
+    
+    .calendar-day-header {
+        font-size: 0.6rem;
+        height: 20px;
+        padding: 0.1rem 0;
     }
     
     .calendar-nav {
-        width: 30px;
-        height: 30px;
-        font-size: 0.9rem;
+        width: 24px;
+        height: 24px;
+        font-size: 0.75rem;
+        padding: 0.2rem;
+    }
+    
+    .calendar-header h6 {
+        font-size: 0.85rem;
     }
     
     canvas {
@@ -874,20 +935,35 @@ canvas {
         font-size: 1.25rem;
     }
     
-    .calendar-day {
-        min-height: 25px;
+    .calendar-container {
+        padding: 0.3rem;
     }
     
-    .calendar-day-number {
-        font-size: 0.7rem;
+    .calendar-day {
+        height: 22px;
+        font-size: 0.6rem;
+    }
+    
+    .calendar-day-header {
+        padding: 0;
+        font-size: 0.55rem;
+        height: 18px;
     }
     
     .calendar-header h6 {
-        font-size: 0.9rem;
+        font-size: 0.8rem;
+    }
+    
+    .calendar-header {
+        margin-bottom: 0.3rem;
+    }
+    
+    .chart-card {
+        min-height: 280px;
     }
     
     .chart-card .card-body {
-        padding: 0.75rem;
+        padding: 0.5rem;
     }
     
     canvas {

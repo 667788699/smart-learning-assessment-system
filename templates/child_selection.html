@@ -252,32 +252,37 @@ async function deleteAccount() {
     }
 }
 
-// 年齡輸入驗證
+// 年齡輸入驗證 - 修正為只驗證範圍，不自動修改
 document.addEventListener('DOMContentLoaded', function() {
     const ageInput = document.getElementById('age');
     if (ageInput) {
-        // 輸入時即時驗證
+        // 輸入時驗證
         ageInput.addEventListener('input', function() {
-            let age = parseInt(this.value);
-            if (age < 6) {
-                this.value = 6;
-            } else if (age > 18) {
-                this.value = 18;
+            const age = parseInt(this.value);
+            if (this.value && (age < 6 || age > 18)) {
+                this.setCustomValidity('年齡必須在6-18歲之間');
+            } else {
+                this.setCustomValidity('');
             }
         });
         
         // 失去焦點時驗證
         ageInput.addEventListener('blur', function() {
-            let age = parseInt(this.value);
-            if (isNaN(age) || age < 6) {
-                this.value = 6;
-            } else if (age > 18) {
-                this.value = 18;
+            const age = parseInt(this.value);
+            if (isNaN(age) || age < 6 || age > 18) {
+                this.setCustomValidity('年齡必須在6-18歲之間');
+                this.reportValidity();
+            } else {
+                this.setCustomValidity('');
             }
         });
         
         // 防止輸入非數字
         ageInput.addEventListener('keypress', function(e) {
+            // 允許退格鍵、刪除鍵等控制鍵
+            if (e.which === 8 || e.which === 0) return;
+            
+            // 只允許數字
             if (e.which < 48 || e.which > 57) {
                 e.preventDefault();
             }

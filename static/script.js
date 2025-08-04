@@ -1,106 +1,4 @@
-// 更新情緒統計
-function updateEmotionCounts(emotion) {
-    if (currentEmotionCounts.hasOwnProperty(emotion)) {
-        currentEmotionCounts[emotion]++;
-        
-        // 更新情緒分類統計
-        updateEmotionCategories(emotion);
-        
-        // 更新當前主要情緒
-        updateCurrentMainEmotion();
-        
-        // 更新圖表
-        updateEmotionChart();
-        
-        // 更新當前情緒顯示
-        updateCurrentEmotionDisplay(emotion);
-    }
-}
-
-// 更新情緒分類統計
-function updateEmotionCategories(emotion) {
-    if (emotion === 'happy' || emotion === 'surprise') {
-        emotionCategories.positive++;
-    } else if (emotion === 'no emotion') {
-        emotionCategories.neutral++;
-    } else {
-        emotionCategories.negative++;
-    }
-    
-    // 更新統計顯示
-    updateEmotionStatsDisplay();
-}
-
-// 更新當前主要情緒
-function updateCurrentMainEmotion() {
-    let maxCount = 0;
-    let mainEmotion = 'no emotion';
-    
-    for (const [emotion, count] of Object.entries(currentEmotionCounts)) {
-        if (count > maxCount) {
-            maxCount = count;
-            mainEmotion = emotion;
-        }
-    }
-    
-    currentMainEmotion = mainEmotion;
-}
-
-// 更新當前情緒顯示
-function updateCurrentEmotionDisplay(latestEmotion) {
-    const iconElement = document.getElementById('currentEmotionIcon');
-    const labelElement = document.getElementById('currentEmotionLabel');
-    
-    if (iconElement && labelElement) {
-        const emotionData = EMOTION_ICONS[latestEmotion] || EMOTION_ICONS['no emotion'];
-        
-        // 更新圖標
-        iconElement.innerHTML = `<i class="${emotionData.icon} fa-2x"></i>`;
-        iconElement.style.background = `linear-gradient(45deg, ${emotionData.color}, ${adjustColor(emotionData.color, -20)})`;
-        
-        // 更新標籤
-        labelElement.textContent = EMOTION_LABELS_ZH[latestEmotion] || latestEmotion;
-        
-        // 添加動畫效果
-        iconElement.style.animation = 'none';
-        setTimeout(() => {
-            iconElement.style.animation = 'emotionPulse 2s infinite';
-        }, 10);
-    }
-}
-
-// 更新情緒統計顯示
-function updateEmotionStatsDisplay() {
-    const positiveElement = document.getElementById('positiveCount');
-    const neutralElement = document.getElementById('neutralCount');
-    const negativeElement = document.getElementById('negativeCount');
-    
-    if (positiveElement) positiveElement.textContent = emotionCategories.positive;
-    if (neutralElement) neutralElement.textContent = emotionCategories.neutral;
-    if (negativeElement) negativeElement.textContent = emotionCategories.negative;
-}
-
-// 顏色調整輔助函數
-function adjustColor(color, amount) {
-    const usePound = color[0] === '#';
-    const col = usePound ? color.slice(1) : color;
-    const num = parseInt(col, 16);
-    let r = (num >> 16) + amount;
-    let g = (num >> 8 & 0x00FF) + amount;
-    let b = (num & 0x0000FF) + amount;
-    r = r > 255 ? 255 : r < 0 ? 0 : r;
-    g = g > 255 ? 255 : g < 0 ? 0 : g;
-    b = b > 255 ? 255 : b < 0 ? 0 : b;
-    return (usePound ? '#' : '') + (r << 16 | g << 8 | b).toString(16).padStart(6, '0');
-}
-
-// 更新情緒圖表
-function updateEmotionChart() {
-    if (emotionChart) {
-        emotionChart.data.datasets[0].data = Object.values(currentEmotionCounts);
-        emotionChart.update('active'); // 使用動畫更新
-    }
-}// static/script.js
+// static/script.js
 // 全域變數
 let video, canvas, ctx;
 let yoloModel = null;
@@ -133,13 +31,6 @@ let currentEmotionCounts = {
     'no emotion': 0,
     'sad': 0,
     'surprise': 0
-};
-
-// 情緒分類統計
-let emotionCategories = {
-    positive: 0,  // happy, surprise
-    neutral: 0,   // no emotion
-    negative: 0   // anger, disgust, fear, sad
 };
 
 // 當前主要情緒
@@ -188,15 +79,15 @@ function initRegisterPage() {
         form.addEventListener('submit', handleRegister);
     }
     
-    // 年齡驗證
+    // 年齡驗證 - 移除自動修正
     const ageInput = document.getElementById('age');
     if (ageInput) {
-        ageInput.addEventListener('input', function() {
+        ageInput.addEventListener('blur', function() {
             const age = parseInt(this.value);
-            if (age < 6) {
-                this.value = 6;
-            } else if (age > 18) {
-                this.value = 18;
+            if (isNaN(age) || age < 6 || age > 18) {
+                this.setCustomValidity('年齡必須在6-18歲之間');
+            } else {
+                this.setCustomValidity('');
             }
         });
     }
@@ -215,7 +106,33 @@ async function initStudyPage() {
     await initCamera();
     initStudyControls();
     await loadModels();
-    initEmotionChart();
+    initEmotionLights();
+}
+
+// 初始化情緒燈光
+function initEmotionLights() {
+    // 創建七個情緒燈光元素
+    const emotionLightsContainer = document.getElementById('emotionLights');
+    if (emotionLightsContainer) {
+        emotionLightsContainer.innerHTML = '';
+        
+        EMOTION_LABELS.forEach(emotion => {
+            const emotionLight = document.createElement('div');
+            emotionLight.className = 'emotion-light-item';
+            emotionLight.id = `emotion-${emotion.replace(' ', '-')}`;
+            
+            const icon = document.createElement('i');
+            icon.className = `${EMOTION_ICONS[emotion].icon} fa-2x`;
+            
+            const label = document.createElement('div');
+            label.className = 'emotion-label';
+            label.textContent = EMOTION_LABELS_ZH[emotion];
+            
+            emotionLight.appendChild(icon);
+            emotionLight.appendChild(label);
+            emotionLightsContainer.appendChild(emotionLight);
+        });
+    }
 }
 
 // 處理註冊表單提交
@@ -404,125 +321,30 @@ function initStudyControls() {
         generateReportBtn.addEventListener('click', generateReport);
     }
     
-    // 年齡驗證小孩創建表單
+    // 年齡驗證小孩創建表單 - 修正只驗證範圍，不自動修改
     const ageInput = document.getElementById('age');
     if (ageInput) {
-        ageInput.addEventListener('input', function() {
+        ageInput.addEventListener('blur', function() {
             const age = parseInt(this.value);
-            if (age < 6) {
-                this.value = 6;
-            } else if (age > 18) {
-                this.value = 18;
+            if (isNaN(age) || age < 6 || age > 18) {
+                this.setCustomValidity('年齡必須在6-18歲之間');
+                this.reportValidity();
+            } else {
+                this.setCustomValidity('');
             }
         });
         
-        ageInput.addEventListener('blur', function() {
-            const age = parseInt(this.value);
-            if (isNaN(age) || age < 6) {
-                this.value = 6;
-            } else if (age > 18) {
-                this.value = 18;
+        // 防止輸入非數字
+        ageInput.addEventListener('keypress', function(e) {
+            // 允許退格鍵、刪除鍵等控制鍵
+            if (e.which === 8 || e.which === 0) return;
+            
+            // 只允許數字
+            if (e.which < 48 || e.which > 57) {
+                e.preventDefault();
             }
         });
     }
-}
-
-// 初始化情緒圖表
-function initEmotionChart() {
-    const canvas = document.getElementById('emotionChart');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    
-    emotionChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: EMOTION_LABELS.map(emotion => EMOTION_LABELS_ZH[emotion] || emotion),
-            datasets: [{
-                label: '檢測次數',
-                data: Object.values(currentEmotionCounts),
-                backgroundColor: [
-                    '#E74C3C', // anger - 紅色
-                    '#8E44AD', // disgust - 紫色
-                    '#2C3E50', // fear - 深灰色
-                    '#F1C40F', // happy - 黃色
-                    '#95A5A6', // no emotion - 灰色
-                    '#3498DB', // sad - 藍色
-                    '#E67E22'  // surprise - 橙色
-                ],
-                borderColor: [
-                    '#C0392B',
-                    '#7D3C98',
-                    '#1B2631',
-                    '#D4AC0D',
-                    '#839192',
-                    '#2980B9',
-                    '#CA6F1E'
-                ],
-                borderWidth: 2,
-                borderRadius: 4,
-                borderSkipped: false,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    titleColor: '#fff',
-                    bodyColor: '#fff',
-                    borderColor: '#42a5f5',
-                    borderWidth: 1,
-                    cornerRadius: 8,
-                    callbacks: {
-                        title: function(context) {
-                            return context[0].label;
-                        },
-                        label: function(context) {
-                            return `檢測次數: ${context.parsed.y}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1,
-                        color: '#666',
-                        font: {
-                            size: 10
-                        }
-                    },
-                    grid: {
-                        color: 'rgba(0,0,0,0.1)',
-                        drawBorder: false
-                    }
-                },
-                x: {
-                    ticks: {
-                        maxRotation: 45,
-                        minRotation: 45,
-                        color: '#666',
-                        font: {
-                            size: 10
-                        }
-                    },
-                    grid: {
-                        display: false
-                    }
-                }
-            },
-            animation: {
-                duration: 800,
-                easing: 'easeInOutQuart'
-            }
-        }
-    });
 }
 
 // 載入 AI 模型
@@ -631,12 +453,10 @@ async function startStudySession() {
             for (let emotion in currentEmotionCounts) {
                 currentEmotionCounts[emotion] = 0;
             }
-            emotionCategories = { positive: 0, neutral: 0, negative: 0 };
             currentMainEmotion = 'no emotion';
             
-            updateEmotionChart();
-            updateCurrentEmotionDisplay('no emotion');
-            updateEmotionStatsDisplay();
+            // 重置所有情緒燈光
+            resetEmotionLights();
             
             // 隱藏設定卡片，顯示狀態卡片
             document.getElementById('timeSettingCard').style.display = 'none';
@@ -734,8 +554,9 @@ async function detectFaceAndEmotion() {
         // 更新專注度指示器
         updateAttentionIndicator(detectionResult.attention);
         
-        // 更新情緒統計
+        // 更新情緒統計和燈光
         updateEmotionCounts(detectionResult.emotion);
+        updateEmotionLights(detectionResult.emotion, detectionResult.confidence);
         
         // 記錄數據
         await recordEmotionData(detectionResult);
@@ -988,15 +809,58 @@ function calculateAttentionFromEmotion(emotion, confidence) {
 function updateEmotionCounts(emotion) {
     if (currentEmotionCounts.hasOwnProperty(emotion)) {
         currentEmotionCounts[emotion]++;
-        updateEmotionChart();
+        
+        // 更新當前主要情緒
+        updateCurrentMainEmotion();
     }
 }
 
-// 更新情緒圖表
-function updateEmotionChart() {
-    if (emotionChart) {
-        emotionChart.data.datasets[0].data = Object.values(currentEmotionCounts);
-        emotionChart.update('active'); // 使用動畫更新
+// 更新當前主要情緒
+function updateCurrentMainEmotion() {
+    let maxCount = 0;
+    let mainEmotion = 'no emotion';
+    
+    for (const [emotion, count] of Object.entries(currentEmotionCounts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            mainEmotion = emotion;
+        }
+    }
+    
+    currentMainEmotion = mainEmotion;
+}
+
+// 重置所有情緒燈光
+function resetEmotionLights() {
+    EMOTION_LABELS.forEach(emotion => {
+        const lightElement = document.getElementById(`emotion-${emotion.replace(' ', '-')}`);
+        if (lightElement) {
+            lightElement.style.opacity = '0.3';
+            lightElement.style.backgroundColor = 'transparent';
+            lightElement.classList.remove('active');
+        }
+    });
+}
+
+// 更新情緒燈光
+function updateEmotionLights(detectedEmotion, confidence) {
+    // 先重置所有燈光
+    resetEmotionLights();
+    
+    // 點亮檢測到的情緒
+    const lightElement = document.getElementById(`emotion-${detectedEmotion.replace(' ', '-')}`);
+    if (lightElement) {
+        // 根據信心度設定亮度（0.5 - 1.0）
+        const opacity = 0.5 + (confidence * 0.5);
+        lightElement.style.opacity = opacity;
+        lightElement.style.backgroundColor = EMOTION_ICONS[detectedEmotion].color + '20'; // 添加透明背景
+        lightElement.classList.add('active');
+        
+        // 添加發光效果
+        lightElement.style.boxShadow = `0 0 20px ${EMOTION_ICONS[detectedEmotion].color}`;
+        
+        // 添加脈動動畫
+        lightElement.style.animation = 'emotionPulse 2s infinite';
     }
 }
 

@@ -43,13 +43,25 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
-# 註冊中文字體用於 PDF
+# 註冊中文字體用於 PDF - 使用微軟正黑體
 try:
-    # 嘗試使用系統字體
-    pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
+    # 優先嘗試使用微軟正黑體
+    if os.path.exists('./fonts/MSJH.TTC'):
+        pdfmetrics.registerFont(TTFont('MSJH', './fonts/MSJH.TTC'))
+        PDF_FONT = 'MSJH'
+    elif os.path.exists('C:/Windows/Fonts/msjh.ttc'):
+        pdfmetrics.registerFont(TTFont('MSJH', 'C:/Windows/Fonts/msjh.ttc'))
+        PDF_FONT = 'MSJH'
+    else:
+        # 嘗試其他中文字體
+        if os.path.exists('simsun.ttc'):
+            pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
+            PDF_FONT = 'SimSun'
+        else:
+            PDF_FONT = 'Helvetica'
 except:
     # 如果找不到中文字體，使用內建字體
-    pass
+    PDF_FONT = 'Helvetica'
 
 # 資料庫模型
 class User(db.Model):
@@ -884,11 +896,17 @@ def create_comprehensive_report(child, study_sessions):
    # 設定樣式
    styles = getSampleStyleSheet()
    
+   # 根據是否有中文字體來設定字體名稱
+   if PDF_FONT in ['MSJH', 'SimSun']:
+       font_name = PDF_FONT
+   else:
+       font_name = 'Helvetica'
+   
    # 自定義樣式
    title_style = ParagraphStyle(
        'CustomTitle',
        parent=styles['Title'],
-       fontName='Helvetica-Bold',
+       fontName=font_name + '-Bold' if font_name == 'Helvetica' else font_name,
        fontSize=24,
        textColor=colors.HexColor('#2C3E50'),
        alignment=TA_CENTER,
@@ -898,7 +916,7 @@ def create_comprehensive_report(child, study_sessions):
    heading_style = ParagraphStyle(
        'CustomHeading',
        parent=styles['Heading1'],
-       fontName='Helvetica-Bold',
+       fontName=font_name + '-Bold' if font_name == 'Helvetica' else font_name,
        fontSize=16,
        textColor=colors.HexColor('#34495E'),
        spaceAfter=12
@@ -907,23 +925,26 @@ def create_comprehensive_report(child, study_sessions):
    normal_style = ParagraphStyle(
        'CustomNormal',
        parent=styles['Normal'],
-       fontName='Helvetica',
+       fontName=font_name,
        fontSize=12,
        leading=18
    )
    
    # 標題頁
-   story.append(Paragraph('Learning Assessment Report', title_style))
+   if PDF_FONT in ['MSJH', 'SimSun']:
+       story.append(Paragraph('學習評估報告', title_style))
+   else:
+       story.append(Paragraph('Learning Assessment Report', title_style))
    story.append(Spacer(1, 30))
    
    # 基本資訊表格
    basic_info = [
-       ['Child Name', child.nickname],
-       ['Gender', GENDERS.get(child.gender, child.gender)],
-       ['Age', str(child.age)],
-       ['Education Stage', EDUCATION_STAGES.get(child.education_stage, child.education_stage)],
-       ['Report Date', datetime.now().strftime('%Y-%m-%d')],
-       ['Total Sessions', str(len(study_sessions))]
+       ['姓名' if PDF_FONT in ['MSJH', 'SimSun'] else 'Child Name', child.nickname],
+       ['性別' if PDF_FONT in ['MSJH', 'SimSun'] else 'Gender', GENDERS.get(child.gender, child.gender)],
+       ['年齡' if PDF_FONT in ['MSJH', 'SimSun'] else 'Age', str(child.age)],
+       ['教育階段' if PDF_FONT in ['MSJH', 'SimSun'] else 'Education Stage', EDUCATION_STAGES.get(child.education_stage, child.education_stage)],
+       ['報告日期' if PDF_FONT in ['MSJH', 'SimSun'] else 'Report Date', datetime.now().strftime('%Y-%m-%d')],
+       ['總學習次數' if PDF_FONT in ['MSJH', 'SimSun'] else 'Total Sessions', str(len(study_sessions))]
    ]
    
    info_table = Table(basic_info, colWidths=[2.5*inch, 3.5*inch])
@@ -931,7 +952,7 @@ def create_comprehensive_report(child, study_sessions):
        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ECF0F1')),
        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-       ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+       ('FONTNAME', (0, 0), (-1, -1), font_name),
        ('FONTSIZE', (0, 0), (-1, -1), 12),
        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7'))
@@ -941,7 +962,10 @@ def create_comprehensive_report(child, study_sessions):
    story.append(PageBreak())
    
    # 數據分析部分
-   story.append(Paragraph('Data Analysis', heading_style))
+   if PDF_FONT in ['MSJH', 'SimSun']:
+       story.append(Paragraph('數據分析', heading_style))
+   else:
+       story.append(Paragraph('Data Analysis', heading_style))
    story.append(Spacer(1, 20))
    
    if study_sessions:
@@ -956,19 +980,27 @@ def create_comprehensive_report(child, study_sessions):
        else:
            avg_attention_percent = 0
        
-       stats_data = [
-           ['Total Study Time', f'{total_hours:.1f} hours ({total_minutes} minutes)'],
-           ['Average Attention Level', f'{avg_attention_percent}%'],
-           ['Study Frequency', f'{len(study_sessions)} sessions'],
-           ['Average Session Duration', f'{total_minutes/len(study_sessions):.1f} minutes']
-       ]
+       if PDF_FONT in ['MSJH', 'SimSun']:
+           stats_data = [
+               ['總學習時間', f'{total_hours:.1f} 小時 ({total_minutes} 分鐘)'],
+               ['平均專注度', f'{avg_attention_percent}%'],
+               ['學習頻率', f'{len(study_sessions)} 次'],
+               ['平均學習時長', f'{total_minutes/len(study_sessions):.1f} 分鐘']
+           ]
+       else:
+           stats_data = [
+               ['Total Study Time', f'{total_hours:.1f} hours ({total_minutes} minutes)'],
+               ['Average Attention Level', f'{avg_attention_percent}%'],
+               ['Study Frequency', f'{len(study_sessions)} sessions'],
+               ['Average Session Duration', f'{total_minutes/len(study_sessions):.1f} minutes']
+           ]
        
        stats_table = Table(stats_data, colWidths=[3*inch, 3*inch])
        stats_table.setStyle(TableStyle([
            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8F4F8')),
            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-           ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+           ('FONTNAME', (0, 0), (-1, -1), font_name),
            ('FONTSIZE', (0, 0), (-1, -1), 11),
            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3498DB'))
@@ -978,7 +1010,10 @@ def create_comprehensive_report(child, study_sessions):
        story.append(Spacer(1, 30))
        
        # 科目表現分析
-       story.append(Paragraph('Subject Performance Analysis', heading_style))
+       if PDF_FONT in ['MSJH', 'SimSun']:
+           story.append(Paragraph('科目表現分析', heading_style))
+       else:
+           story.append(Paragraph('Subject Performance Analysis', heading_style))
        story.append(Spacer(1, 20))
        
        subject_stats = {}
@@ -996,25 +1031,38 @@ def create_comprehensive_report(child, study_sessions):
                subject_stats[session.subject]['attention_sum'] += session.avg_attention
                subject_stats[session.subject]['attention_count'] += 1
        
-       subject_data = [['Subject', 'Sessions', 'Total Time', 'Avg Attention']]
+       if PDF_FONT in ['MSJH', 'SimSun']:
+           subject_data = [['科目', '學習次數', '總時間', '平均專注度']]
+       else:
+           subject_data = [['Subject', 'Sessions', 'Total Time', 'Avg Attention']]
+           
        for subject, stats in subject_stats.items():
            subject_name = SUBJECTS.get(subject, subject)
            avg_att = 0
            if stats['attention_count'] > 0:
                avg_att = round(stats['attention_sum'] / stats['attention_count'] * 100 / 3)
-           subject_data.append([
-               subject_name,
-               str(stats['count']),
-               f"{stats['total_time']} min",
-               f"{avg_att}%"
-           ])
+           
+           if PDF_FONT in ['MSJH', 'SimSun']:
+               subject_data.append([
+                   subject_name,
+                   str(stats['count']),
+                   f"{stats['total_time']} 分鐘",
+                   f"{avg_att}%"
+               ])
+           else:
+               subject_data.append([
+                   subject_name,
+                   str(stats['count']),
+                   f"{stats['total_time']} min",
+                   f"{avg_att}%"
+               ])
        
        subject_table = Table(subject_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
        subject_table.setStyle(TableStyle([
            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-           ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+           ('FONTNAME', (0, 0), (-1, 0), font_name + '-Bold' if font_name == 'Helvetica' else font_name),
            ('FONTSIZE', (0, 0), (-1, -1), 11),
            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
@@ -1025,19 +1073,31 @@ def create_comprehensive_report(child, study_sessions):
        story.append(PageBreak())
    
    # 智慧建議部分
-   story.append(Paragraph('Personalized Learning Recommendations', heading_style))
+   if PDF_FONT in ['MSJH', 'SimSun']:
+       story.append(Paragraph('個人化學習建議', heading_style))
+   else:
+       story.append(Paragraph('Personalized Learning Recommendations', heading_style))
    story.append(Spacer(1, 20))
    
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
    # 建議分類顯示
-   category_names = {
-       'age_appropriate': 'Age-Appropriate Recommendations',
-       'learning_style': 'Learning Style Suggestions',
-       'schedule': 'Schedule Optimization',
-       'attention_improvement': 'Attention Improvement Tips',
-       'subject_specific': 'Subject-Specific Advice'
-   }
+   if PDF_FONT in ['MSJH', 'SimSun']:
+       category_names = {
+           'age_appropriate': '年齡適性建議',
+           'learning_style': '學習風格建議',
+           'schedule': '時間規劃優化',
+           'attention_improvement': '專注力提升建議',
+           'subject_specific': '科目專屬建議'
+       }
+   else:
+       category_names = {
+           'age_appropriate': 'Age-Appropriate Recommendations',
+           'learning_style': 'Learning Style Suggestions',
+           'schedule': 'Schedule Optimization',
+           'attention_improvement': 'Attention Improvement Tips',
+           'subject_specific': 'Subject-Specific Advice'
+       }
    
    for category, items in suggestions.items():
        if items:
@@ -1045,7 +1105,10 @@ def create_comprehensive_report(child, study_sessions):
            story.append(Spacer(1, 10))
            
            for item in items:
-               story.append(Paragraph(f"• {item}", normal_style))
+               if PDF_FONT in ['MSJH', 'SimSun']:
+                   story.append(Paragraph(f"• {item}", normal_style))
+               else:
+                   story.append(Paragraph(f"• {item}", normal_style))
                story.append(Spacer(1, 8))
            
            story.append(Spacer(1, 20))

@@ -85,6 +85,25 @@
             --danger-color: #ef5350;
             --info-color: #26c6da;
         }
+        
+        /* 個人資料表單對齊 */
+        .modal-body .form-label {
+            min-width: 120px;
+            text-align: right;
+            margin-right: 10px;
+        }
+        
+        .modal-body .form-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .modal-body .form-group .form-control,
+        .modal-body .form-group .form-select,
+        .modal-body .form-group .btn-group {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -154,17 +173,17 @@
                 </div>
                 <div class="modal-body">
                     <form id="editProfileForm">
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label for="editUsername" class="form-label">使用者名稱</label>
                             <input type="text" class="form-control" id="editUsername" value="{{ session.username }}" required>
                         </div>
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label for="editEmail" class="form-label">電子郵件</label>
                             <input type="email" class="form-control" id="editEmail" required>
                         </div>
-                        <div class="mb-3">
-                            <label for="editPassword" class="form-label">新密碼（留空表示不更改）</label>
-                            <input type="password" class="form-control" id="editPassword">
+                        <div class="form-group">
+                            <label for="editPassword" class="form-label">新密碼</label>
+                            <input type="password" class="form-control" id="editPassword" placeholder="留空表示不更改">
                         </div>
                     </form>
                 </div>
@@ -187,13 +206,13 @@
                 </div>
                 <div class="modal-body">
                     <form id="editChildForm">
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label for="editChildNickname" class="form-label">暱稱</label>
                             <input type="text" class="form-control" id="editChildNickname" value="{{ session.child_nickname }}" required>
                         </div>
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label class="form-label">性別</label>
-                            <div class="btn-group w-100" role="group">
+                            <div class="btn-group" role="group">
                                 <input type="radio" class="btn-check" name="editGender" id="editMale" value="male">
                                 <label class="btn btn-outline-primary" for="editMale">
                                     <i class="fas fa-mars me-1"></i>男生
@@ -204,11 +223,11 @@
                                 </label>
                             </div>
                         </div>
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label for="editChildAge" class="form-label">年齡</label>
                             <input type="number" class="form-control" id="editChildAge" min="6" max="18" required>
                         </div>
-                        <div class="mb-3">
+                        <div class="form-group">
                             <label for="editEducationStage" class="form-label">教育階段</label>
                             <select class="form-select" id="editEducationStage" required>
                                 <option value="elementary">國小</option>
@@ -307,30 +326,26 @@
         }
     }
 
-    // 年齡輸入驗證
+    // 年齡輸入驗證 - 修正只驗證範圍
     document.addEventListener('DOMContentLoaded', function() {
         const ageInput = document.getElementById('editChildAge');
         if (ageInput) {
-            ageInput.addEventListener('input', function() {
-                let age = parseInt(this.value);
-                if (age < 6) {
-                    this.value = 6;
-                } else if (age > 18) {
-                    this.value = 18;
-                }
-            });
-            
             ageInput.addEventListener('blur', function() {
-                let age = parseInt(this.value);
-                if (isNaN(age) || age < 6) {
-                    this.value = 6;
-                } else if (age > 18) {
-                    this.value = 18;
+                const age = parseInt(this.value);
+                if (isNaN(age) || age < 6 || age > 18) {
+                    this.setCustomValidity('年齡必須在6-18歲之間');
+                    this.reportValidity();
+                } else {
+                    this.setCustomValidity('');
                 }
             });
             
             // 防止輸入非數字
             ageInput.addEventListener('keypress', function(e) {
+                // 允許退格鍵、刪除鍵等控制鍵
+                if (e.which === 8 || e.which === 0) return;
+                
+                // 只允許數字
                 if (e.which < 48 || e.which > 57) {
                     e.preventDefault();
                 }
