@@ -131,8 +131,11 @@ def upgrade_database():
         # 檢查是否需要升級
         with app.app_context():
             # 嘗試查詢現有表結構
-            result = db.engine.execute("PRAGMA table_info(study_session)")
-            columns = [row[1] for row in result]
+            # result = db.engine.execute("PRAGMA table_info(study_session)")
+            # columns = [row[1] for row in result]
+            with db.engine.connect() as conn:
+                result = conn.exec_driver_sql("PRAGMA table_info(study_session)")
+                cols = [row[1] for row in result]
             
             # 如果沒有 best_subject_of_day 欄位，則不需要做任何事情
             # 因為我們已經從模型中移除了這個欄位
