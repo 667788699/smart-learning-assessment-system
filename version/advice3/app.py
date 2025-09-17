@@ -16,7 +16,10 @@ from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.shapes import Drawing
+from reportlab.lib import colors
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
 try:
    import matplotlib
@@ -45,22 +48,34 @@ bcrypt = Bcrypt(app)
 
 # 註冊中文字體用於 PDF - 使用微軟正黑體
 try:
-    # 優先嘗試使用微軟正黑體
-    if os.path.exists('./fonts/MSJH.TTC'):
-        pdfmetrics.registerFont(TTFont('MSJH', './fonts/MSJH.TTC'))
-        PDF_FONT = 'MSJH'
-    elif os.path.exists('C:/Windows/Fonts/msjh.ttc'):
-        pdfmetrics.registerFont(TTFont('MSJH', 'C:/Windows/Fonts/msjh.ttc'))
-        PDF_FONT = 'MSJH'
-    else:
-        # 嘗試其他中文字體
-        if os.path.exists('simsun.ttc'):
-            pdfmetrics.registerFont(TTFont('SimSun', 'simsun.ttc'))
-            PDF_FONT = 'SimSun'
-        else:
-            PDF_FONT = 'Helvetica'
-except:
-    # 如果找不到中文字體，使用內建字體
+    # 嘗試多種中文字體路徑
+    font_paths = [
+        './fonts/MSJH.TTC',
+        'C:/Windows/Fonts/msjh.ttc',
+        'C:/Windows/Fonts/msjh.ttf',
+        '/System/Library/Fonts/PingFang.ttc',  # macOS
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Linux
+        './static/fonts/NotoSansCJK-Regular.ttc',  # 備用字體
+    ]
+    
+    PDF_FONT = None
+    for font_path in font_paths:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont('ChineseFont', font_path))
+                PDF_FONT = 'ChineseFont'
+                print(f"成功載入中文字體: {font_path}")
+                break
+            except Exception as e:
+                print(f"載入字體失敗 {font_path}: {e}")
+                continue
+    
+    if PDF_FONT is None:
+        print("警告: 無法載入中文字體，將使用 Helvetica")
+        PDF_FONT = 'Helvetica'
+        
+except Exception as e:
+    print(f"字體註冊過程發生錯誤: {e}")
     PDF_FONT = 'Helvetica'
 
 # 資料庫模型
@@ -776,347 +791,676 @@ def prepare_performance_data(study_sessions):
    return data
 
 def generate_comprehensive_suggestions(child, study_sessions):
-   """生成全面的個人化建議"""
-   suggestions = {
-       'learning_style': [],
-       'schedule': [],
-       'subject_specific': [],
-       'attention_improvement': [],
-       'age_appropriate': []
-   }
-   
-   # 基於年齡和教育階段的建議 - 統一推薦番茄鐘技巧
-   suggestions['age_appropriate'].append("建議使用番茄鐘技巧：學習25分鐘，休息5分鐘，有助於維持專注力")
-   
-   if child.education_stage == 'elementary':
-       if child.age <= 8:
-           suggestions['age_appropriate'].append("年齡較小，建議搭配互動式學習活動和獎勵制度增加學習動機")
-       else:
-           suggestions['age_appropriate'].append("可以鼓勵自主選擇學習主題，提升學習興趣和責任感")
-   elif child.education_stage == 'middle':
-       suggestions['age_appropriate'].append("國中階段需要更多自主學習空間，建議設定明確的學習目標")
-       suggestions['age_appropriate'].append("可以開始培養時間管理和學習計畫的能力")
-   else:  # high school
-       suggestions['age_appropriate'].append("高中生需要更強的自律性，建議制定長期學習計畫")
-       suggestions['age_appropriate'].append("重視學習效率，可使用思維導圖、康乃爾筆記法等學習工具")
-   
-   # 基於性別的建議（避免刻板印象）
-   if child.gender == 'female':
-       suggestions['learning_style'].append("可以考慮與朋友一起學習，合作學習環境有助於學習效果")
-   else:
-       suggestions['learning_style'].append("可以設定挑戰性目標，競爭性學習環境較能激發學習動力")
-   
-   # 基於學習數據的時間規劃建議
-   if study_sessions:
-       # 專注度分析
-       attention_sessions = [s for s in study_sessions if s.avg_attention]
-       if attention_sessions:
-           avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
-           
-           if avg_attention < 1.5:
-               suggestions['attention_improvement'].append("專注度偏低，建議檢查學習環境是否有干擾因素")
-               suggestions['attention_improvement'].append("可以嘗試使用白噪音或輕音樂幫助集中注意力")
-               suggestions['schedule'].append("建議縮短每次學習時間至15-20分鐘，增加休息頻率")
-           elif avg_attention < 2.5:
-               suggestions['attention_improvement'].append("專注度中等，建議學習前做5分鐘的深呼吸或伸展運動")
-               suggestions['schedule'].append("目前的25分鐘學習時段很適合，建議維持這個節奏")
-           else:
-               suggestions['attention_improvement'].append("專注度表現優秀！可以嘗試更有挑戰性的學習內容")
-               suggestions['schedule'].append("可以考慮延長學習時段至30-35分鐘，但仍要保持適當休息")
-       
-       # 學習時間分析
-       study_hours = {}
-       for session in study_sessions:
-           hour = session.start_time.hour
-           if hour not in study_hours:
-               study_hours[hour] = []
-           if session.avg_attention:
-               study_hours[hour].append(session.avg_attention)
-       
-       if study_hours:
-           # 找出專注度最高的時段
-           best_hour_data = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
-           best_hour = best_hour_data[0]
-           
-           if 6 <= best_hour < 9:
-               suggestions['schedule'].append("您的孩子在早上(6-9點)專注度最高，建議安排重要科目在這個時段")
-           elif 9 <= best_hour < 12:
-               suggestions['schedule'].append("您的孩子在上午(9-12點)專注度最高，建議安排重要科目在這個時段")
-           elif 14 <= best_hour < 17:
-               suggestions['schedule'].append("您的孩子在下午(14-17點)專注度最高，建議安排重要科目在這個時段")
-           elif 19 <= best_hour < 22:
-               suggestions['schedule'].append("您的孩子在晚上(19-22點)專注度最高，建議安排重要科目在這個時段")
-           
-           # 根據年齡給予時間規劃建議
-           if child.age <= 10:
-               suggestions['schedule'].append("建議避免在晚上8點後進行需要高度專注的學習")
-           elif child.age <= 15:
-               suggestions['schedule'].append("可以在晚上9點前完成主要學習任務，之後進行輕鬆的複習")
-           else:
-               suggestions['schedule'].append("高中生可以適度延長晚間學習時間，但要確保充足睡眠")
-       
-       # 科目專屬建議
-       subject_performance = {}
-       for session in study_sessions:
-           if session.avg_attention:
-               if session.subject not in subject_performance:
-                   subject_performance[session.subject] = []
-               subject_performance[session.subject].append(session.avg_attention)
-       
-       for subject, performances in subject_performance.items():
-           avg_perf = sum(performances) / len(performances)
-           subject_name = SUBJECTS.get(subject, subject)
-           
-           if avg_perf < 2:
-               if subject == 'math':
-                   if child.education_stage == 'elementary':
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議使用數學遊戲和實物教具輔助學習")
-                   else:
-                       suggestions['subject_specific'].append(f"{subject_name}需要加強，建議多做基礎練習題，建立數學邏輯思維")
-               elif subject == 'science':
-                   suggestions['subject_specific'].append(f"{subject_name}需要加強，建議透過實驗和觀察增加學習興趣")
-               else:
-                   suggestions['subject_specific'].append(f"{subject_name}需要加強，建議增加練習時間並找出學習困難點")
-           else:
-               suggestions['subject_specific'].append(f"{subject_name}表現良好，可以嘗試更進階的內容或協助其他科目學習")
-   
-   return suggestions
+    """生成全面的個人化建議"""
+    suggestions = {
+        'learning_style': [],
+        'schedule': [],
+        'subject_specific': [],
+        'attention_improvement': [],
+        'age_appropriate': []
+    }
+    
+    # 基於年齡和教育階段的建議 - 統一推薦番茄鐘技巧
+    suggestions['age_appropriate'].append("建議使用番茄鐘技巧：學習25分鐘，休息5分鐘，有助於維持專注力")
+    
+    if child.education_stage == 'elementary':
+        if child.age <= 8:
+            suggestions['age_appropriate'].append("年齡較小，建議搭配互動式學習活動和獎勵制度增加學習動機")
+        else:
+            suggestions['age_appropriate'].append("可以鼓勵自主選擇學習主題，提升學習興趣和責任感")
+    elif child.education_stage == 'middle':
+        suggestions['age_appropriate'].append("國中階段需要更多自主學習空間，建議設定明確的學習目標")
+        suggestions['age_appropriate'].append("可以開始培養時間管理和學習計畫的能力")
+    else:  # high school
+        suggestions['age_appropriate'].append("高中生需要更強的自律性，建議制定長期學習計畫")
+        suggestions['age_appropriate'].append("重視學習效率，可使用思維導圖、康乃爾筆記法等學習工具")
+    
+    # 基於性別的建議（避免刻板印象）
+    if child.gender == 'female':
+        suggestions['learning_style'].append("可以考慮與朋友一起學習，合作學習環境有助於學習效果")
+    else:
+        suggestions['learning_style'].append("可以設定挑戰性目標，競爭性學習環境較能激發學習動力")
+    
+    # 基於學習數據的時間規劃建議
+    if study_sessions:
+        # 專注度分析
+        attention_sessions = [s for s in study_sessions if s.avg_attention]
+        if attention_sessions:
+            avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
+            
+            if avg_attention < 1.5:
+                suggestions['attention_improvement'].append("專注度偏低，建議檢查學習環境是否有干擾因素")
+                suggestions['attention_improvement'].append("可以嘗試使用白噪音或輕音樂幫助集中注意力")
+                suggestions['schedule'].append("建議縮短每次學習時間至15-20分鐘，增加休息頻率")
+            elif avg_attention < 2.5:
+                suggestions['attention_improvement'].append("專注度中等，建議學習前做5分鐘的深呼吸或伸展運動")
+                suggestions['schedule'].append("目前的25分鐘學習時段很適合，建議維持這個節奏")
+            else:
+                suggestions['attention_improvement'].append("專注度表現優秀！可以嘗試更有挑戰性的學習內容")
+                suggestions['schedule'].append("可以考慮延長學習時段至30-35分鐘，但仍要保持適當休息")
+        
+        # 學習時間分析
+        study_hours = {}
+        for session in study_sessions:
+            hour = session.start_time.hour
+            if hour not in study_hours:
+                study_hours[hour] = []
+            if session.avg_attention:
+                study_hours[hour].append(session.avg_attention)
+        
+        if study_hours:
+            # 找出專注度最高的時段
+            best_hour_data = max(study_hours.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0)
+            best_hour = best_hour_data[0]
+            
+            if 6 <= best_hour < 9:
+                suggestions['schedule'].append("您的孩子在早上(6-9點)專注度最高，建議安排重要科目在這個時段")
+            elif 9 <= best_hour < 12:
+                suggestions['schedule'].append("您的孩子在上午(9-12點)專注度最高，建議安排重要科目在這個時段")
+            elif 14 <= best_hour < 17:
+                suggestions['schedule'].append("您的孩子在下午(14-17點)專注度最高，建議安排重要科目在這個時段")
+            elif 19 <= best_hour < 22:
+                suggestions['schedule'].append("您的孩子在晚上(19-22點)專注度最高，建議安排重要科目在這個時段")
+            
+            # 根據年齡給予時間規劃建議
+            if child.age <= 10:
+                suggestions['schedule'].append("建議避免在晚上8點後進行需要高度專注的學習")
+            elif child.age <= 15:
+                suggestions['schedule'].append("可以在晚上9點前完成主要學習任務，之後進行輕鬆的複習")
+            else:
+                suggestions['schedule'].append("高中生可以適度延長晚間學習時間，但要確保充足睡眠")
+        
+        # 科目專屬建議 - 根據年齡、性別、專注力狀態給出差異化建議
+        subject_performance = {}
+        for session in study_sessions:
+            if session.avg_attention:
+                if session.subject not in subject_performance:
+                    subject_performance[session.subject] = []
+                subject_performance[session.subject].append(session.avg_attention)
+        
+        # 計算整體平均專注度，用於判斷專注力狀態
+        overall_avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions) if attention_sessions else 2.0
+        attention_level = "high" if overall_avg_attention >= 2.5 else "medium" if overall_avg_attention >= 1.5 else "low"
+        
+        for subject, performances in subject_performance.items():
+            avg_perf = sum(performances) / len(performances)
+            subject_name = SUBJECTS.get(subject, subject)
+            
+            if avg_perf < 2:  # 需要加強的科目
+                suggestion = get_subject_improvement_suggestion(subject, child.age, child.gender, child.education_stage, attention_level)
+                suggestions['subject_specific'].append(f"{subject_name}需要加強，{suggestion}")
+            else:  # 表現良好的科目
+                suggestion = get_subject_excellence_suggestion(subject, child.age, child.gender, child.education_stage, attention_level)
+                suggestions['subject_specific'].append(f"{subject_name}表現良好，{suggestion}")
+    
+    return suggestions
+
+def get_subject_improvement_suggestion(subject, age, gender, education_stage, attention_level):
+    """根據科目、年齡、性別、教育階段和專注力狀態生成改進建議"""
+    
+    # 基礎建議模板
+    suggestions = {
+        'math': {
+            'elementary': {
+                'low': "建議使用數學教具和遊戲化學習，每次學習15分鐘後休息5分鐘",
+                'medium': "可以透過生活中的數學問題增加興趣，如購物找零、測量物品等",
+                'high': "建議嘗試數學競賽題目或邏輯推理遊戲來挑戰思維"
+            },
+            'middle': {
+                'low': "建議先鞏固基礎概念，使用視覺化工具如圖表和模型輔助理解",
+                'medium': "可以組成學習小組互相討論數學問題，增加學習動機",
+                'high': "建議參與數學社團或奧林匹亞競賽，培養更深層的數學思維"
+            },
+            'high': {
+                'low': "建議分解複雜問題為小步驟，每完成一步就給予自己獎勵",
+                'medium': "可以尋找數學在科學和工程中的應用實例，增加學習意義感",
+                'high': "建議自主學習微積分或統計學等進階內容，為大學做準備"
+            }
+        },
+        'science': {
+            'elementary': {
+                'low': "建議多做簡單的科學實驗，透過動手操作增加學習興趣",
+                'medium': "可以觀看科學紀錄片或參觀科學館，培養科學好奇心",
+                'high': "建議參與科學展覽或小小科學家活動，展示學習成果"
+            },
+            'middle': {
+                'low': "建議重視基礎概念的理解，使用概念圖整理知識架構",
+                'medium': "可以進行小組實驗，透過合作學習提升理解能力",
+                'high': "建議參與科學競賽或研究專題，深入探索感興趣的科學領域"
+            },
+            'high': {
+                'low': "建議連結科學知識與日常生活，找出科學在生活中的應用",
+                'medium': "可以閱讀科學期刊或論文，培養科學思維和研究方法",
+                'high': "建議進行獨立研究項目，培養科學研究和創新能力"
+            }
+        },
+        'language': {
+            'elementary': {
+                'low': "建議透過閱讀繪本和說故事增加語言接觸，每天15-20分鐘",
+                'medium': "可以寫日記或小故事，練習表達想法和創意寫作",
+                'high': "建議參與演講比賽或戲劇表演，提升口語表達能力"
+            },
+            'middle': {
+                'low': "建議先從感興趣的書籍開始閱讀，建立閱讀習慣和信心",
+                'medium': "可以參與讀書會或寫作社團，與同儕分享閱讀心得",
+                'high': "建議嘗試創作詩歌或小說，參與文學競賽展現才華"
+            },
+            'high': {
+                'low': "建議設定小目標，如每週讀一篇文章並寫下心得",
+                'medium': "可以練習辯論和公開演講，提升邏輯思維和表達能力",
+                'high': "建議研讀經典文學作品，培養深度思考和批判分析能力"
+            }
+        },
+        'social': {
+            'elementary': {
+                'low': "建議透過故事和遊戲學習歷史地理，增加學習趣味性",
+                'medium': "可以參觀博物館或歷史景點，實地體驗社會文化",
+                'high': "建議關注時事新聞，培養對社會議題的關心和理解"
+            },
+            'middle': {
+                'low': "建議使用時間軸和地圖等視覺工具，幫助記憶和理解",
+                'medium': "可以參與模擬聯合國或歷史劇表演，增加學習體驗",
+                'high': "建議研讀歷史文獻和社會議題，培養批判思考能力"
+            },
+            'high': {
+                'low': "建議從感興趣的歷史人物或事件開始，逐步擴展知識範圍",
+                'medium': "可以參與社會服務活動，實際體驗社會問題和解決方案",
+                'high': "建議進行社會科學研究，分析當代社會現象和趨勢"
+            }
+        },
+        'art': {
+            'elementary': {
+                'low': "建議從簡單的塗鴉和手工藝開始，每次創作時間不要太長",
+                'medium': "可以嘗試不同的藝術媒材，如水彩、粘土、拼貼等",
+                'high': "建議參與藝術比賽或展覽，分享創作成果獲得成就感"
+            },
+            'middle': {
+                'low': "建議選擇自己感興趣的藝術形式專精，建立信心和技能",
+                'medium': "可以參與藝術社團或工作坊，與同好交流學習",
+                'high': "建議研究藝術史和名家作品，提升藝術鑑賞和創作能力"
+            },
+            'high': {
+                'low': "建議設定小目標，如每週完成一幅作品，逐步累積成就感",
+                'medium': "可以嘗試數位藝術或多媒體創作，結合科技與藝術",
+                'high': "建議準備藝術作品集，為升學或職涯發展做準備"
+            }
+        },
+        'cs': {
+            'elementary': {
+                'low': "建議從視覺化程式設計開始，如Scratch，透過遊戲學習邏輯",
+                'medium': "可以參與程式設計營隊或課程，與同儕一起學習",
+                'high': "建議嘗試製作簡單的遊戲或動畫，展現創意和技能"
+            },
+            'middle': {
+                'low': "建議先學習基礎程式概念，透過小專題增加學習動機",
+                'medium': "可以參與程式設計競賽或黑客松活動，挑戰自己",
+                'high': "建議學習網頁設計或App開發，創造實用的數位產品"
+            },
+            'high': {
+                'low': "建議選擇一種程式語言深入學習，建立扎實的基礎",
+                'medium': "可以參與開源專案或實習機會，累積實務經驗",
+                'high': "建議研究人工智慧或資料科學，為未來科技發展做準備"
+            }
+        }
+    }
+    
+    # 根據性別調整建議
+    base_suggestion = suggestions.get(subject, {}).get(education_stage, {}).get(attention_level, "建議增加練習時間並找出學習困難點")
+    
+    if gender == 'female':
+        if subject in ['math', 'cs']:
+            # 鼓勵女性在STEM領域的參與
+            if age <= 12:
+                base_suggestion += "，可以找女性榜樣激勵學習動機"
+            else:
+                base_suggestion += "，建議參與女性科技社群或導師計畫"
+        elif subject == 'language':
+            base_suggestion += "，可以透過創意寫作表達情感和想法"
+    else:  # male
+        if subject == 'language':
+            if age <= 12:
+                base_suggestion += "，可以透過冒險故事或英雄傳記增加閱讀興趣"
+            else:
+                base_suggestion += "，建議關注辯論和邏輯論證技巧"
+        elif subject in ['art']:
+            base_suggestion += "，可以嘗試結合科技元素的創作形式"
+    
+    return base_suggestion
+
+def get_subject_excellence_suggestion(subject, age, gender, education_stage, attention_level):
+    """根據科目、年齡、性別、教育階段和專注力狀態生成進階建議"""
+    
+    suggestions = {
+        'math': {
+            'elementary': {
+                'low': "可以擔任數學小老師，教導其他同學加深自己的理解",
+                'medium': "建議挑戰數學奧林匹亞題目，培養高階思維能力",
+                'high': "可以提前學習中學數學內容，為未來學習做準備"
+            },
+            'middle': {
+                'low': "建議參與數學輔導志工，透過教學相長提升能力",
+                'medium': "可以研讀數學史和數學家傳記，了解數學的發展脈絡",
+                'high': "建議自學高中數學或參與大學先修課程"
+            },
+            'high': {
+                'low': "可以將數學應用到其他學科，如物理、經濟學等領域",
+                'medium': "建議參與數學研究專題，培養學術研究能力",
+                'high': "可以考慮未來朝數學、工程或科學相關領域發展"
+            }
+        },
+        'science': {
+            'elementary': {
+                'low': "可以成為科學實驗的小助手，協助老師準備實驗",
+                'medium': "建議參與科學營隊或青少年科學家計畫",
+                'high': "可以進行獨立的科學觀察和小型研究專題"
+            },
+            'middle': {
+                'low': "建議參與科展或發明競賽，將科學知識轉化為創新",
+                'medium': "可以閱讀科普書籍和期刊，擴展科學視野",
+                'high': "建議參與實驗室實習或科學研究計畫"
+            },
+            'high': {
+                'low': "可以考慮選修進階科學課程或AP課程",
+                'medium': "建議參與國際科學競賽或交流活動",
+                'high': "可以提前規劃理工科系的升學目標和準備方向"
+            }
+        },
+        'language': {
+            'elementary': {
+                'low': "可以擔任說故事志工，分享閱讀的樂趣給其他孩子",
+                'medium': "建議嘗試創作兒童文學或參與寫作比賽",
+                'high': "可以學習第二外語，培養多元語言能力"
+            },
+            'middle': {
+                'low': "建議參與校刊編輯或文學社團活動",
+                'medium': "可以嘗試翻譯作品或參與雙語活動",
+                'high': "建議閱讀經典文學作品，培養文學素養"
+            },
+            'high': {
+                'low': "可以考慮朝文學、新聞或外語相關科系發展",
+                'medium': "建議參與國際文學交流或筆友計畫",
+                'high': "可以準備語言能力認證考試，為升學加分"
+            }
+        },
+        'social': {
+            'elementary': {
+                'low': "可以擔任小小導覽員，介紹歷史文化給參觀者",
+                'medium': "建議參與模擬政府或小小市長等公民活動",
+                'high': "可以研究家族歷史或社區發展史"
+            },
+            'middle': {
+                'low': "建議參與辯論社或模擬法庭活動",
+                'medium': "可以關注國際時事，培養全球視野",
+                'high': "建議參與社會服務，實際了解社會議題"
+            },
+            'high': {
+                'low': "可以考慮朝法律、政治或社會學相關領域發展",
+                'medium': "建議參與國際模擬聯合國會議",
+                'high': "可以進行社會科學研究，分析當代社會現象"
+            }
+        },
+        'art': {
+            'elementary': {
+                'low': "可以協助美化校園環境，發揮藝術才能服務他人",
+                'medium': "建議參與社區藝術活動或公共藝術創作",
+                'high': "可以嘗試不同藝術風格和技法的創作實驗"
+            },
+            'middle': {
+                'low': "建議參與藝術社團或擔任美術股長",
+                'medium': "可以研究藝術史和不同文化的藝術形式",
+                'high': "建議準備藝術作品集，參與藝術比賽或展覽"
+            },
+            'high': {
+                'low': "可以考慮朝設計、美術或藝術相關科系發展",
+                'medium': "建議參與藝術工作坊或大師班學習",
+                'high': "可以嘗試藝術創業或參與藝術產業實習"
+            }
+        },
+        'cs': {
+            'elementary': {
+                'low': "可以協助老師和同學解決電腦問題，分享技術知識",
+                'medium': "建議參與程式設計營隊，與同好交流學習",
+                'high': "可以開發簡單的App或網站，解決生活中的問題"
+            },
+            'middle': {
+                'low': "建議參與資訊社團或程式設計競賽",
+                'medium': "可以學習進階程式語言和軟體開發技術",
+                'high': "建議參與開源專案或實習機會，累積實務經驗"
+            },
+            'high': {
+                'low': "可以考慮朝資訊工程或相關科技領域發展",
+                'medium': "建議研究人工智慧、區塊鏈等前沿技術",
+                'high': "可以創立科技社團或參與創業競賽"
+            }
+        }
+    }
+    
+    base_suggestion = suggestions.get(subject, {}).get(education_stage, {}).get(attention_level, "可以嘗試更進階的內容或協助其他科目學習")
+    
+    # 根據性別調整建議
+    if gender == 'female':
+        if subject in ['math', 'cs']:
+            if age >= 15:
+                base_suggestion += "，可以成為STEM領域的女性榜樣"
+        elif subject in ['language', 'art']:
+            base_suggestion += "，可以發揮細膩的觀察力和表達能力"
+    else:  # male
+        if subject == 'cs':
+            base_suggestion += "，可以嘗試參與大型開源專案或技術社群"
+        elif subject in ['math', 'science']:
+            base_suggestion += "，可以挑戰更高難度的競賽或研究"
+    
+    return base_suggestion
 
 def create_comprehensive_report(child, study_sessions):
-   """創建包含數據分析和智慧建議的完整PDF報告"""
-   filename = f'report_{child.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
-   filepath = os.path.join('reports', filename)
-   
-   # 確保reports目錄存在
-   os.makedirs('reports', exist_ok=True)
-   
-   doc = SimpleDocTemplate(filepath, pagesize=A4)
-   story = []
-   
-   # 設定樣式
-   styles = getSampleStyleSheet()
-   
-   # 根據是否有中文字體來設定字體名稱
-   if PDF_FONT in ['MSJH', 'SimSun']:
-       font_name = PDF_FONT
-   else:
-       font_name = 'Helvetica'
-   
-   # 自定義樣式
-   title_style = ParagraphStyle(
-       'CustomTitle',
-       parent=styles['Title'],
-       fontName=font_name + '-Bold' if font_name == 'Helvetica' else font_name,
-       fontSize=24,
-       textColor=colors.HexColor('#2C3E50'),
-       alignment=TA_CENTER,
-       spaceAfter=30
-   )
-   
-   heading_style = ParagraphStyle(
-       'CustomHeading',
-       parent=styles['Heading1'],
-       fontName=font_name + '-Bold' if font_name == 'Helvetica' else font_name,
-       fontSize=16,
-       textColor=colors.HexColor('#34495E'),
-       spaceAfter=12
-   )
-   
-   normal_style = ParagraphStyle(
-       'CustomNormal',
-       parent=styles['Normal'],
-       fontName=font_name,
-       fontSize=12,
-       leading=18
-   )
-   
-   # 標題頁
-   if PDF_FONT in ['MSJH', 'SimSun']:
-       story.append(Paragraph('學習評估報告', title_style))
-   else:
-       story.append(Paragraph('Learning Assessment Report', title_style))
-   story.append(Spacer(1, 30))
-   
-   # 基本資訊表格
-   basic_info = [
-       ['姓名' if PDF_FONT in ['MSJH', 'SimSun'] else 'Child Name', child.nickname],
-       ['性別' if PDF_FONT in ['MSJH', 'SimSun'] else 'Gender', GENDERS.get(child.gender, child.gender)],
-       ['年齡' if PDF_FONT in ['MSJH', 'SimSun'] else 'Age', str(child.age)],
-       ['教育階段' if PDF_FONT in ['MSJH', 'SimSun'] else 'Education Stage', EDUCATION_STAGES.get(child.education_stage, child.education_stage)],
-       ['報告日期' if PDF_FONT in ['MSJH', 'SimSun'] else 'Report Date', datetime.now().strftime('%Y-%m-%d')],
-       ['總學習次數' if PDF_FONT in ['MSJH', 'SimSun'] else 'Total Sessions', str(len(study_sessions))]
-   ]
-   
-   info_table = Table(basic_info, colWidths=[2.5*inch, 3.5*inch])
-   info_table.setStyle(TableStyle([
-       ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ECF0F1')),
-       ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
-       ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-       ('FONTNAME', (0, 0), (-1, -1), font_name),
-       ('FONTSIZE', (0, 0), (-1, -1), 12),
-       ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-       ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7'))
-   ]))
-   
-   story.append(info_table)
-   story.append(PageBreak())
-   
-   # 數據分析部分
-   if PDF_FONT in ['MSJH', 'SimSun']:
-       story.append(Paragraph('數據分析', heading_style))
-   else:
-       story.append(Paragraph('Data Analysis', heading_style))
-   story.append(Spacer(1, 20))
-   
-   if study_sessions:
-       # 統計數據
-       total_minutes = sum(s.duration_minutes for s in study_sessions)
-       total_hours = total_minutes / 60
-       
-       attention_sessions = [s for s in study_sessions if s.avg_attention]
-       if attention_sessions:
-           avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
-           avg_attention_percent = round(avg_attention * 100 / 3)
-       else:
-           avg_attention_percent = 0
-       
-       if PDF_FONT in ['MSJH', 'SimSun']:
-           stats_data = [
-               ['總學習時間', f'{total_hours:.1f} 小時 ({total_minutes} 分鐘)'],
-               ['平均專注度', f'{avg_attention_percent}%'],
-               ['學習頻率', f'{len(study_sessions)} 次'],
-               ['平均學習時長', f'{total_minutes/len(study_sessions):.1f} 分鐘']
-           ]
-       else:
-           stats_data = [
-               ['Total Study Time', f'{total_hours:.1f} hours ({total_minutes} minutes)'],
-               ['Average Attention Level', f'{avg_attention_percent}%'],
-               ['Study Frequency', f'{len(study_sessions)} sessions'],
-               ['Average Session Duration', f'{total_minutes/len(study_sessions):.1f} minutes']
-           ]
-       
-       stats_table = Table(stats_data, colWidths=[3*inch, 3*inch])
-       stats_table.setStyle(TableStyle([
-           ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8F4F8')),
-           ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
-           ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-           ('FONTNAME', (0, 0), (-1, -1), font_name),
-           ('FONTSIZE', (0, 0), (-1, -1), 11),
-           ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-           ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3498DB'))
-       ]))
-       
-       story.append(stats_table)
-       story.append(Spacer(1, 30))
-       
-       # 科目表現分析
-       if PDF_FONT in ['MSJH', 'SimSun']:
-           story.append(Paragraph('科目表現分析', heading_style))
-       else:
-           story.append(Paragraph('Subject Performance Analysis', heading_style))
-       story.append(Spacer(1, 20))
-       
-       subject_stats = {}
-       for session in study_sessions:
-           if session.subject not in subject_stats:
-               subject_stats[session.subject] = {
-                   'count': 0,
-                   'total_time': 0,
-                   'attention_sum': 0,
-                   'attention_count': 0
-               }
-           subject_stats[session.subject]['count'] += 1
-           subject_stats[session.subject]['total_time'] += session.duration_minutes
-           if session.avg_attention:
-               subject_stats[session.subject]['attention_sum'] += session.avg_attention
-               subject_stats[session.subject]['attention_count'] += 1
-       
-       if PDF_FONT in ['MSJH', 'SimSun']:
-           subject_data = [['科目', '學習次數', '總時間', '平均專注度']]
-       else:
-           subject_data = [['Subject', 'Sessions', 'Total Time', 'Avg Attention']]
-           
-       for subject, stats in subject_stats.items():
-           subject_name = SUBJECTS.get(subject, subject)
-           avg_att = 0
-           if stats['attention_count'] > 0:
-               avg_att = round(stats['attention_sum'] / stats['attention_count'] * 100 / 3)
-           
-           if PDF_FONT in ['MSJH', 'SimSun']:
-               subject_data.append([
-                   subject_name,
-                   str(stats['count']),
-                   f"{stats['total_time']} 分鐘",
-                   f"{avg_att}%"
-               ])
-           else:
-               subject_data.append([
-                   subject_name,
-                   str(stats['count']),
-                   f"{stats['total_time']} min",
-                   f"{avg_att}%"
-               ])
-       
-       subject_table = Table(subject_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
-       subject_table.setStyle(TableStyle([
-           ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
-           ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-           ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-           ('FONTNAME', (0, 0), (-1, 0), font_name + '-Bold' if font_name == 'Helvetica' else font_name),
-           ('FONTSIZE', (0, 0), (-1, -1), 11),
-           ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-           ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
-           ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#95A5A6'))
-       ]))
-       
-       story.append(subject_table)
-       story.append(PageBreak())
-   
-   # 智慧建議部分
-   if PDF_FONT in ['MSJH', 'SimSun']:
-       story.append(Paragraph('個人化學習建議', heading_style))
-   else:
-       story.append(Paragraph('Personalized Learning Recommendations', heading_style))
-   story.append(Spacer(1, 20))
-   
-   suggestions = generate_comprehensive_suggestions(child, study_sessions)
-   
-   # 建議分類顯示
-   if PDF_FONT in ['MSJH', 'SimSun']:
-       category_names = {
-           'age_appropriate': '年齡適性建議',
-           'learning_style': '學習風格建議',
-           'schedule': '時間規劃優化',
-           'attention_improvement': '專注力提升建議',
-           'subject_specific': '科目專屬建議'
-       }
-   else:
-       category_names = {
-           'age_appropriate': 'Age-Appropriate Recommendations',
-           'learning_style': 'Learning Style Suggestions',
-           'schedule': 'Schedule Optimization',
-           'attention_improvement': 'Attention Improvement Tips',
-           'subject_specific': 'Subject-Specific Advice'
-       }
-   
-   for category, items in suggestions.items():
-       if items:
-           story.append(Paragraph(category_names.get(category, category), heading_style))
-           story.append(Spacer(1, 10))
-           
-           for item in items:
-               if PDF_FONT in ['MSJH', 'SimSun']:
-                   story.append(Paragraph(f"• {item}", normal_style))
-               else:
-                   story.append(Paragraph(f"• {item}", normal_style))
-               story.append(Spacer(1, 8))
-           
-           story.append(Spacer(1, 20))
-   
-   # 生成報告
-   doc.build(story)
-   return filepath
-
+    """創建包含數據分析和智慧建議的完整PDF報告"""
+    filename = f'report_{child.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+    filepath = os.path.join('reports', filename)
+    
+    # 確保reports目錄存在
+    os.makedirs('reports', exist_ok=True)
+    
+    doc = SimpleDocTemplate(filepath, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    story = []
+    
+    # 設定樣式
+    styles = getSampleStyleSheet()
+    
+    # 根據是否有中文字體來設定字體名稱
+    font_name = PDF_FONT if PDF_FONT and PDF_FONT != 'Helvetica' else 'Helvetica'
+    
+    # 自定義樣式
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontName=font_name,
+        fontSize=24,
+        textColor=colors.HexColor('#2C3E50'),
+        alignment=TA_CENTER,
+        spaceAfter=30
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading1'],
+        fontName=font_name,
+        fontSize=16,
+        textColor=colors.HexColor('#34495E'),
+        spaceAfter=12,
+        spaceBefore=20
+    )
+    
+    
+    
+    sub_heading_style = ParagraphStyle(
+        'SubHeading',
+        parent=styles['Heading2'],
+        fontName=font_name,
+        fontSize=14,
+        textColor=colors.HexColor('#34495E'),
+        spaceAfter=8,
+        spaceBefore=15,
+        alignment=TA_LEFT
+    )
+    
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=12,
+        leading=18
+    )
+    
+    # 標題頁
+    story.append(Paragraph('學習評估報告', title_style))
+    story.append(Spacer(1, 30))
+    
+    # 基本資訊表格
+    basic_info = [
+        ['姓名', child.nickname],
+        ['性別', GENDERS.get(child.gender, child.gender)],
+        ['年齡', str(child.age)],
+        ['教育階段', EDUCATION_STAGES.get(child.education_stage, child.education_stage)],
+        ['報告日期', datetime.now().strftime('%Y-%m-%d')],
+        ['總學習次數', str(len(study_sessions))]
+    ]
+    
+    info_table = Table(basic_info, colWidths=[2.5*inch, 3.5*inch])
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#ECF0F1')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, -1), font_name),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7'))
+    ]))
+    
+    story.append(info_table)
+    story.append(PageBreak())
+    
+    # 數據分析部分
+    story.append(Paragraph('數據分析', heading_style))
+    story.append(Spacer(1, 20))
+    
+    if study_sessions:
+        # 統計數據
+        total_minutes = sum(s.duration_minutes for s in study_sessions)
+        total_hours = total_minutes / 60
+        
+        attention_sessions = [s for s in study_sessions if s.avg_attention]
+        if attention_sessions:
+            avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
+            avg_attention_percent = round(avg_attention * 100 / 3)
+        else:
+            avg_attention_percent = 0
+        
+        stats_data = [
+            ['總學習時間', f'{total_hours:.1f} 小時 ({total_minutes} 分鐘)'],
+            ['平均專注度', f'{avg_attention_percent}%'],
+            ['學習頻率', f'{len(study_sessions)} 次'],
+            ['平均學習時長', f'{total_minutes/len(study_sessions):.1f} 分鐘']
+        ]
+        
+        stats_table = Table(stats_data, colWidths=[3*inch, 3*inch])
+        stats_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E8F4F8')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#2C3E50')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#3498DB'))
+        ]))
+        
+        story.append(stats_table)
+        story.append(PageBreak())
+        
+        # 計算科目統計數據
+        subject_stats = {}
+        for session in study_sessions:
+            if session.subject not in subject_stats:
+                subject_stats[session.subject] = {
+                    'count': 0,
+                    'total_time': 0,
+                    'attention_sum': 0,
+                    'attention_count': 0
+                }
+            subject_stats[session.subject]['count'] += 1
+            subject_stats[session.subject]['total_time'] += session.duration_minutes
+            if session.avg_attention:
+                subject_stats[session.subject]['attention_sum'] += session.avg_attention
+                subject_stats[session.subject]['attention_count'] += 1
+        
+        # 科目表現分析 - 主標題
+        story.append(Paragraph('科目表現分析', heading_style))
+        story.append(Spacer(1, 20))
+        
+        # 先放數據表格
+        if subject_stats:
+            subject_data = [['科目', '學習次數', '總時間', '平均專注度']]
+                
+            for subject, stats in subject_stats.items():
+                subject_name = SUBJECTS.get(subject, subject)
+                avg_att = 0
+                if stats['attention_count'] > 0:
+                    avg_att = round(stats['attention_sum'] / stats['attention_count'] * 100 / 3)
+                
+                subject_data.append([
+                    subject_name,
+                    str(stats['count']),
+                    f"{stats['total_time']} 分鐘",
+                    f"{avg_att}%"
+                ])
+            
+            subject_table = Table(subject_data, colWidths=[2*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+            subject_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), font_name),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+                ('TOPPADDING', (0, 0), (-1, -1), 10),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#95A5A6'))
+            ]))
+            
+            story.append(subject_table)
+            story.append(Spacer(1, 20))
+            
+            # 準備圖表數據
+            pie_data = []
+            pie_labels = []
+            pie_colors = [
+                colors.HexColor('#42A5F5'),  # 藍色
+                colors.HexColor('#66BB6A'),  # 綠色  
+                colors.HexColor('#EF5350'),  # 紅色
+                colors.HexColor('#FFB74D'),  # 橙色
+                colors.HexColor('#AB47BC'),  # 紫色
+                colors.HexColor('#26C6DA')   # 青色
+            ]
+            
+            for i, (subject, stats) in enumerate(subject_stats.items()):
+                subject_name = SUBJECTS.get(subject, subject)
+                pie_data.append(stats['total_time'])
+                pie_labels.append(subject_name)
+            
+            # 圓餅圖子標題
+            story.append(Paragraph('科目學習時間分布', sub_heading_style))
+            story.append(Spacer(1, 5))
+            
+            # 創建圓餅圖
+            drawing1 = Drawing(500, 400)
+            pie = Pie()
+            pie.x = 80
+            pie.y = 70
+            pie.width = 250
+            pie.height = 250
+            pie.data = pie_data
+            pie.labels = pie_labels
+            pie.slices.strokeColor = colors.white
+            pie.slices.strokeWidth = 2
+            
+            # 設定標籤字體和位置
+            pie.slices.fontName = font_name
+            pie.slices.fontSize = 12
+            pie.slices.fontColor = colors.black
+            pie.slices.labelRadius = 1.15
+            pie.slices.popout = 3
+            
+            # 設定顏色
+            for i, color in enumerate(pie_colors[:len(pie_data)]):
+                pie.slices[i].fillColor = color
+                
+            drawing1.add(pie)
+            story.append(drawing1)
+            story.append(Spacer(1, 15))
+            
+            # 長條圖子標題
+            story.append(Paragraph('科目專注度比較', sub_heading_style))
+            story.append(Spacer(1, 5))
+            
+            # 創建長條圖
+            drawing2 = Drawing(500, 240)
+            bar_chart = VerticalBarChart()
+            bar_chart.x = 60
+            bar_chart.y = 20
+            bar_chart.height = 180
+            bar_chart.width = 380
+            
+            # 準備長條圖數據
+            bar_data = []
+            bar_labels = []
+            
+            for subject, stats in subject_stats.items():
+                subject_name = SUBJECTS.get(subject, subject)
+                if stats['attention_count'] > 0:
+                    avg_attention = round(stats['attention_sum'] / stats['attention_count'] * 100 / 3)
+                else:
+                    avg_attention = 0
+                bar_data.append(avg_attention)
+                bar_labels.append(subject_name)
+            
+            bar_chart.data = [bar_data]
+            bar_chart.categoryAxis.categoryNames = bar_labels
+            bar_chart.categoryAxis.labels.fontName = font_name
+            bar_chart.categoryAxis.labels.fontSize = 12
+            bar_chart.categoryAxis.labels.angle = 0
+            bar_chart.valueAxis.valueMin = 0
+            bar_chart.valueAxis.valueMax = 100
+            bar_chart.valueAxis.labels.fontName = font_name
+            bar_chart.valueAxis.labels.fontSize = 10
+            bar_chart.bars[0].fillColor = colors.HexColor('#66BB6A')
+            bar_chart.bars[0].strokeColor = colors.white
+            bar_chart.bars[0].strokeWidth = 1
+            
+            drawing2.add(bar_chart)
+            story.append(drawing2)
+            story.append(Spacer(1, 20))
+        
+        story.append(PageBreak())
+    
+    # 智慧建議部分
+    story.append(Paragraph('個人化學習建議', heading_style))
+    story.append(Spacer(1, 20))
+    
+    suggestions = generate_comprehensive_suggestions(child, study_sessions)
+    
+    # 建議分類顯示
+    category_names = {
+        'age_appropriate': '年齡適性建議',
+        'learning_style': '學習風格建議',
+        'schedule': '時間規劃優化',
+        'attention_improvement': '專注力提升建議',
+        'subject_specific': '科目專屬建議'
+    }
+    
+    # 建議小標題樣式
+    suggestion_heading_style = ParagraphStyle(
+        'SuggestionHeading',
+        parent=heading_style,
+        fontSize=14,
+        spaceAfter=8,
+        spaceBefore=15
+    )
+    
+    for category, items in suggestions.items():
+        if items:
+            story.append(Paragraph(category_names.get(category, category), suggestion_heading_style))
+            story.append(Spacer(1, 8))
+            
+            for item in items:
+                story.append(Paragraph(f"• {item}", normal_style))
+                story.append(Spacer(1, 6))
+            
+            story.append(Spacer(1, 15))
+    
+    # 生成報告
+    doc.build(story)
+    return filepath
 @app.route('/logout')
 def logout():
    """登出功能"""
