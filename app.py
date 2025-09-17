@@ -77,10 +77,6 @@ else:
         print("OpenAI 套件未安裝")
 
 
-
-
-
-
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
 try:
    import matplotlib
@@ -104,20 +100,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///learning_system.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# AI建議功能開關 - 在這裡控制是否啟用AI建議
-AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
-
-# 初始化 OpenAI 客戶端
-if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
-    try:
-        client = OpenAI()  # 會自動從環境變數 OPENAI_API_KEY 讀取
-        print("OpenAI 客戶端初始化成功")
-    except Exception as e:
-        client = None
-        print(f"OpenAI 客戶端初始化失敗: {e}")
-        AI_SUGGESTIONS_ENABLED = False
-else:
-    client = None
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
