@@ -297,24 +297,38 @@ def generate_ai_suggestions(child, study_sessions):
         請用繁體中文回覆，建議要實用且適合台灣的教育環境。每個建議控制在50字以內，總回覆控制在300字以內。
         """
         
-        # 呼叫 OpenAI API
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=800,
-            temperature=0.7
-        )
+        # 呼叫 OpenAI API - 增加重試機制
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.7,
+                    timeout=30  # 30秒超時
+                )
+                
+                ai_suggestion = response.choices[0].message.content.strip()
+                print(f"AI建議生成成功，長度: {len(ai_suggestion)}")
+                return ai_suggestion
+                
+            except Exception as api_error:
+                print(f"OpenAI API 呼叫失敗 (嘗試 {attempt + 1}/{max_retries}): {api_error}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # 等待2秒後重試
+                continue
         
-        ai_suggestion = response.choices[0].message.content.strip()
-        print(f"AI建議生成成功，長度: {len(ai_suggestion)}")
-        return ai_suggestion
+        # 所有重試都失敗
+        return "AI建議暫時無法生成，請稍後再試。系統仍可正常提供其他學習建議。"
         
     except Exception as e:
-        print(f"AI建議生成失敗: {e}")
-        return f"AI建議暫時無法生成，請稍後再試。錯誤訊息: {str(e)}"
+        print(f"AI建議生成過程發生錯誤: {e}")
+        return "AI建議功能暫時不可用，但您仍可查看系統提供的個人化學習建議。"
 
 def upgrade_database():
     """升級資料庫結構"""
