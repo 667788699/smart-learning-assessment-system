@@ -23,7 +23,7 @@ from reportlab.lib import colors
 import os
 import httpx
 import asyncio
-import json
+
 # OpenAI 相關導入
 # try:
 #     from openai import OpenAI
@@ -48,7 +48,7 @@ except ImportError:
 # AI建議功能開關
 AI_SUGGESTIONS_ENABLED = True
 
-# 使用 requests 直接呼叫 OpenAI API，繞過 OpenAI Python SDK 的網路問題
+# 強化的 OpenAI 客戶端初始化 - 專門解決 Render 環境問題
 if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
     try:
         api_key = os.environ.get('OPENAI_API_KEY')
@@ -58,23 +58,54 @@ if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
             api_key = os.environ.get('OPENAI_API_KEY')
         
         if api_key:
-            client = None  # 我們不使用官方客戶端
-            OPENAI_API_KEY = api_key
-            print("✓ OpenAI API Key 設定完成（使用直接 HTTP 呼叫）")
+            try:
+                # 方法1: 使用自定義 HTTP 客戶端解決 Render 網路問題
+                custom_http_client = httpx.Client(
+                    timeout=httpx.Timeout(60.0, connect=20.0, read=40.0),  # 延長超時
+                    limits=httpx.Limits(max_keepalive_connections=1, max_connections=1),
+                    follow_redirects=True,
+                    verify=True,  # 確保 SSL 驗證
+                    headers={
+                        'User-Agent': 'OpenAI-Python/1.0',
+                        'Connection': 'close'  # 避免連接池問題
+                    }
+                )
+                
+                client = OpenAI(
+                    api_key=api_key,
+                    http_client=custom_http_client,
+                    timeout=60.0,
+                    max_retries=2
+                )
+                print("✓ OpenAI 客戶端初始化成功（自定義 HTTP 客戶端）")
+                
+            except Exception as e1:
+                print(f"自定義 HTTP 客戶端失敗: {e1}")
+                # 方法2: 使用環境變數和基本設定
+                try:
+                    os.environ['OPENAI_API_KEY'] = api_key
+                    client = OpenAI(
+                        timeout=45.0,
+                        max_retries=1
+                    )
+                    print("✓ OpenAI 客戶端初始化成功（環境變數方式）")
+                except Exception as e2:
+                    print(f"環境變數方式也失敗: {e2}")
+                    client = None
+                    AI_SUGGESTIONS_ENABLED = False
         else:
             client = None
-            OPENAI_API_KEY = None
             AI_SUGGESTIONS_ENABLED = False
             print("✗ 未找到 OPENAI_API_KEY，AI建議功能已停用")
             
     except Exception as e:
         client = None
-        OPENAI_API_KEY = None
         AI_SUGGESTIONS_ENABLED = False
-        print(f"✗ OpenAI 設定失敗: {e}")
+        print(f"✗ OpenAI 初始化失敗: {e}")
+        print("AI建議功能已停用，其他功能正常運作")
 else:
     client = None
-    OPENAI_API_KEY = None
+
 
 
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
@@ -198,46 +229,9 @@ GENDERS = {
    'female': '女生'
 }
 
-def call_openai_direct(messages, max_tokens=800):
-    """直接使用 requests 呼叫 OpenAI API，繞過 SDK 網路問題"""
-    if not OPENAI_API_KEY:
-        raise Exception("API Key not available")
-    
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; LearningApp/1.0)",
-        "Accept": "application/json",
-        "Connection": "close"  # 強制關閉連接，避免連接池問題
-    }
-    
-    data = {
-        "model": "gpt-4o-mini",
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.7
-    }
-    
-    # 使用 requests 直接呼叫，設定較長的超時時間
-    response = requests.post(
-        url, 
-        headers=headers, 
-        json=data, 
-        timeout=(30, 90),  # (連接超時, 讀取超時)
-        verify=True,
-        stream=False
-    )
-    
-    if response.status_code == 200:
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip()
-    else:
-        raise Exception(f"API 呼叫失敗: {response.status_code} - {response.text}")
-
 def generate_ai_suggestions(child, study_sessions):
-    """使用直接 HTTP 呼叫生成 AI 建議"""
-    if not AI_SUGGESTIONS_ENABLED or not OPENAI_API_KEY:
+    """使用 OpenAI API 生成個人化學習建議"""
+    if not AI_SUGGESTIONS_ENABLED or not client:
         return "AI建議功能目前不可用"
     
     try:
@@ -316,44 +310,38 @@ def generate_ai_suggestions(child, study_sessions):
         請用繁體中文回覆，建議要實用且適合台灣的教育環境。每個建議控制在50字以內，總回覆控制在300字以內。
         """
         
-        messages = [
-            {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
-            {"role": "user", "content": prompt}
-        ]
+        # 呼叫 OpenAI API - 增加重試機制
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=800,
+                    temperature=0.7,
+                    timeout=30  # 30秒超時
+                )
+                
+                ai_suggestion = response.choices[0].message.content.strip()
+                print(f"AI建議生成成功，長度: {len(ai_suggestion)}")
+                return ai_suggestion
+                
+            except Exception as api_error:
+                print(f"OpenAI API 呼叫失敗 (嘗試 {attempt + 1}/{max_retries}): {api_error}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # 等待2秒後重試
+                continue
         
-        # 使用直接 HTTP 呼叫
-        print("使用直接 HTTP 呼叫 OpenAI API...")
-        ai_suggestion = call_openai_direct(messages, max_tokens=800)
-        print(f"✓ AI建議生成成功，長度: {len(ai_suggestion)}")
-        return ai_suggestion
+        # 所有重試都失敗
+        return "AI建議暫時無法生成，請稍後再試。系統仍可正常提供其他學習建議。"
         
-    except requests.exceptions.Timeout:
-        return "AI服務回應超時，請稍後再試。系統其他功能正常運作。"
-    except requests.exceptions.ConnectionError as e:
-        return f"AI服務連線問題：{str(e)[:50]}。可能是網路環境限制，系統其他功能正常。"
-    except requests.exceptions.RequestException as e:
-        return f"AI服務請求失敗：{str(e)[:100]}。系統其他功能正常運作。"
     except Exception as e:
-        print(f"✗ AI建議生成失敗: {e}")
-        return f"AI建議暫時無法生成：{str(e)[:100]}。系統其他功能正常運作。"
-
-# 測試路由
-@app.route('/test_direct_openai')
-def test_direct_openai():
-    """測試直接 HTTP 呼叫 OpenAI"""
-    if not OPENAI_API_KEY:
-        return jsonify({'status': 'error', 'message': 'API Key 不存在'})
-    
-    try:
-        messages = [{"role": "user", "content": "Hello, test message"}]
-        result = call_openai_direct(messages, max_tokens=20)
-        return jsonify({'status': 'success', 'response': result})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-    
-
-
-
+        print(f"AI建議生成過程發生錯誤: {e}")
+        return "AI建議功能暫時不可用，但您仍可查看系統提供的個人化學習建議。"
 
 def upgrade_database():
     """升級資料庫結構"""
