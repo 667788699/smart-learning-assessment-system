@@ -20,6 +20,9 @@ from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
+import os
+import httpx
+import asyncio
 
 # OpenAI 相關導入
 # try:
@@ -32,7 +35,6 @@ from reportlab.lib import colors
 #     OPENAI_AVAILABLE = False
 #     print("OpenAI API 未安裝，AI建議功能將不可用")
 
-
 try:
     from openai import OpenAI
     from dotenv import load_dotenv
@@ -43,24 +45,54 @@ except ImportError:
     OPENAI_AVAILABLE = False
     print("OpenAI API 未安裝，AI建議功能將不可用")
 
-# AI建議功能開關 - 在這裡控制是否啟用AI建議
-AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
+# AI建議功能開關
+AI_SUGGESTIONS_ENABLED = True
 
-# 簡化的 OpenAI 客戶端初始化
+# 強化的 OpenAI 客戶端初始化 - 專門解決 Render 環境問題
 if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
     try:
-        # 確保 API key 存在
         api_key = os.environ.get('OPENAI_API_KEY')
         if not api_key:
-            # 嘗試從 .env 檔案中讀取（本地開發用）
             from dotenv import load_dotenv
             load_dotenv()
             api_key = os.environ.get('OPENAI_API_KEY')
         
         if api_key:
-            # 簡單直接的初始化方式
-            client = OpenAI(api_key=api_key)
-            print("✓ OpenAI 客戶端初始化成功")
+            try:
+                # 方法1: 使用自定義 HTTP 客戶端解決 Render 網路問題
+                custom_http_client = httpx.Client(
+                    timeout=httpx.Timeout(60.0, connect=20.0, read=40.0),  # 延長超時
+                    limits=httpx.Limits(max_keepalive_connections=1, max_connections=1),
+                    follow_redirects=True,
+                    verify=True,  # 確保 SSL 驗證
+                    headers={
+                        'User-Agent': 'OpenAI-Python/1.0',
+                        'Connection': 'close'  # 避免連接池問題
+                    }
+                )
+                
+                client = OpenAI(
+                    api_key=api_key,
+                    http_client=custom_http_client,
+                    timeout=60.0,
+                    max_retries=2
+                )
+                print("✓ OpenAI 客戶端初始化成功（自定義 HTTP 客戶端）")
+                
+            except Exception as e1:
+                print(f"自定義 HTTP 客戶端失敗: {e1}")
+                # 方法2: 使用環境變數和基本設定
+                try:
+                    os.environ['OPENAI_API_KEY'] = api_key
+                    client = OpenAI(
+                        timeout=45.0,
+                        max_retries=1
+                    )
+                    print("✓ OpenAI 客戶端初始化成功（環境變數方式）")
+                except Exception as e2:
+                    print(f"環境變數方式也失敗: {e2}")
+                    client = None
+                    AI_SUGGESTIONS_ENABLED = False
         else:
             client = None
             AI_SUGGESTIONS_ENABLED = False
@@ -73,8 +105,7 @@ if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
         print("AI建議功能已停用，其他功能正常運作")
 else:
     client = None
-    if not OPENAI_AVAILABLE:
-        print("OpenAI 套件未安裝")
+
 
 
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
@@ -199,9 +230,9 @@ GENDERS = {
 }
 
 def generate_ai_suggestions(child, study_sessions):
-    """使用 OpenAI API 生成個人化學習建議"""
+    """使用 OpenAI API 生成個人化學習建議 - 強化版本"""
     if not AI_SUGGESTIONS_ENABLED or not client:
-        return "AI建議功能目前不可用"
+        return "AI建議功能目前暫時不可用，請稍後再試。"
     
     try:
         # 準備學習數據摘要
@@ -279,38 +310,43 @@ def generate_ai_suggestions(child, study_sessions):
         請用繁體中文回覆，建議要實用且適合台灣的教育環境。每個建議控制在50字以內，總回覆控制在300字以內。
         """
         
-        # 呼叫 OpenAI API - 增加重試機制
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=800,
-                    temperature=0.7,
-                    timeout=30  # 30秒超時
-                )
-                
-                ai_suggestion = response.choices[0].message.content.strip()
-                print(f"AI建議生成成功，長度: {len(ai_suggestion)}")
-                return ai_suggestion
-                
-            except Exception as api_error:
-                print(f"OpenAI API 呼叫失敗 (嘗試 {attempt + 1}/{max_retries}): {api_error}")
-                if attempt < max_retries - 1:
-                    import time
-                    time.sleep(2)  # 等待2秒後重試
-                continue
+        # 強化的 API 呼叫 - 專門解決 Render 連線問題
+        print("開始呼叫 OpenAI API...")
         
-        # 所有重試都失敗
-        return "AI建議暫時無法生成，請稍後再試。系統仍可正常提供其他學習建議。"
+        try:
+            # 單次呼叫，延長超時時間
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.7,
+                timeout=60  # 延長到60秒超時
+            )
+            
+            ai_suggestion = response.choices[0].message.content.strip()
+            print(f"✓ AI建議生成成功，長度: {len(ai_suggestion)}")
+            return ai_suggestion
+            
+        except Exception as api_error:
+            error_msg = str(api_error).lower()
+            print(f"✗ OpenAI API 呼叫失敗: {api_error}")
+            
+            # 根據錯誤類型提供詳細的錯誤回應
+            if "timeout" in error_msg or "connection" in error_msg:
+                return f"AI建議服務目前連線不穩定。技術詳情：{str(api_error)[:100]}。系統其他功能正常運作，您可以參考下方的個人化學習建議。"
+            elif "rate limit" in error_msg:
+                return f"AI服務目前使用量較高，請稍後再試。錯誤詳情：{str(api_error)[:50]}。您仍可查看下方的系統學習建議。"
+            elif "api key" in error_msg or "auth" in error_msg:
+                return f"AI服務認證問題，請聯繫系統管理員。錯誤：{str(api_error)[:50]}。其他功能仍可正常使用。"
+            else:
+                return f"AI建議暫時無法生成。錯誤詳情：{str(api_error)[:150]}。系統其他功能正常運作，建議參考下方的學習建議。"
         
     except Exception as e:
-        print(f"AI建議生成過程發生錯誤: {e}")
-        return "AI建議功能暫時不可用，但您仍可查看系統提供的個人化學習建議。"
+        print(f"✗ AI建議生成過程發生錯誤: {e}")
+        return f"AI建議功能遇到技術問題。錯誤詳情：{str(e)[:100]}。系統其他功能正常運作，您可以查看下方的個人化學習建議。"
 
 def upgrade_database():
     """升級資料庫結構"""
