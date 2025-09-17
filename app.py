@@ -22,6 +22,17 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 
 # OpenAI 相關導入
+# try:
+#     from openai import OpenAI
+#     from dotenv import load_dotenv
+#     load_dotenv()
+#     OPENAI_AVAILABLE = True
+#     print("OpenAI API 已載入")
+# except ImportError:
+#     OPENAI_AVAILABLE = False
+#     print("OpenAI API 未安裝，AI建議功能將不可用")
+
+
 try:
     from openai import OpenAI
     from dotenv import load_dotenv
@@ -31,6 +42,44 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
     print("OpenAI API 未安裝，AI建議功能將不可用")
+
+# AI建議功能開關 - 在這裡控制是否啟用AI建議
+AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
+
+# 簡化的 OpenAI 客戶端初始化
+if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
+    try:
+        # 確保 API key 存在
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if not api_key:
+            # 嘗試從 .env 檔案中讀取（本地開發用）
+            from dotenv import load_dotenv
+            load_dotenv()
+            api_key = os.environ.get('OPENAI_API_KEY')
+        
+        if api_key:
+            # 簡單直接的初始化方式
+            client = OpenAI(api_key=api_key)
+            print("✓ OpenAI 客戶端初始化成功")
+        else:
+            client = None
+            AI_SUGGESTIONS_ENABLED = False
+            print("✗ 未找到 OPENAI_API_KEY，AI建議功能已停用")
+            
+    except Exception as e:
+        client = None
+        AI_SUGGESTIONS_ENABLED = False
+        print(f"✗ OpenAI 初始化失敗: {e}")
+        print("AI建議功能已停用，其他功能正常運作")
+else:
+    client = None
+    if not OPENAI_AVAILABLE:
+        print("OpenAI 套件未安裝")
+
+
+
+
+
 
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
 try:
