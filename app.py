@@ -311,7 +311,7 @@ def generate_ai_suggestions(child, study_sessions):
         """
         
         # 呼叫 OpenAI API - 增加重試機制
-        max_retries = 3
+        max_retries = 1
         for attempt in range(max_retries):
             try:
                 response = client.chat.completions.create(
