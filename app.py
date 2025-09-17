@@ -56,26 +56,48 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///learning_system.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # AI建議功能開關 - 在這裡控制是否啟用AI建議
+# AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
+
+# # 初始化 OpenAI 客戶端
+# if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
+#     try:
+#         client = OpenAI()  # 會自動從環境變數 OPENAI_API_KEY 讀取
+#         print("OpenAI 客戶端初始化成功")
+#     except Exception as e:
+#         client = None
+#         print(f"OpenAI 客戶端初始化失敗: {e}")
+#         AI_SUGGESTIONS_ENABLED = False
+# else:
+#     client = None
 AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
 
 # 初始化 OpenAI 客戶端
+client = None
 if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
     try:
         import os
         api_key = os.environ.get('OPENAI_API_KEY')
         if api_key:
-            client = OpenAI(api_key=api_key)
+            # 嘗試最簡潔的初始化方式
+            from openai import OpenAI
+            client = OpenAI(
+                api_key=api_key,
+                timeout=30.0,
+            )
+            # 測試連線
+            test_response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=5
+            )
             print("OpenAI 客戶端初始化成功")
         else:
-            client = None
             print("未找到 OPENAI_API_KEY 環境變數")
             AI_SUGGESTIONS_ENABLED = False
     except Exception as e:
         client = None
         print(f"OpenAI 客戶端初始化失敗: {e}")
         AI_SUGGESTIONS_ENABLED = False
-else:
-    client = None
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
