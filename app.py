@@ -61,8 +61,15 @@ AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
 # 初始化 OpenAI 客戶端
 if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
     try:
-        client = OpenAI()  # 會自動從環境變數 OPENAI_API_KEY 讀取
-        print("OpenAI 客戶端初始化成功")
+        import os
+        api_key = os.environ.get('OPENAI_API_KEY')
+        if api_key:
+            client = OpenAI(api_key=api_key)
+            print("OpenAI 客戶端初始化成功")
+        else:
+            client = None
+            print("未找到 OPENAI_API_KEY 環境變數")
+            AI_SUGGESTIONS_ENABLED = False
     except Exception as e:
         client = None
         print(f"OpenAI 客戶端初始化失敗: {e}")
