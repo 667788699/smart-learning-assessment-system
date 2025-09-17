@@ -20,6 +20,18 @@ from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
+
+# OpenAI 相關導入
+try:
+    from openai import OpenAI
+    from dotenv import load_dotenv
+    load_dotenv()
+    OPENAI_AVAILABLE = True
+    print("OpenAI API 已載入")
+except ImportError:
+    OPENAI_AVAILABLE = False
+    print("OpenAI API 未安裝，AI建議功能將不可用")
+
 # 嘗試導入 matplotlib 和 numpy，如果失敗則使用替代方案
 try:
    import matplotlib
@@ -42,6 +54,21 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///learning_system.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# AI建議功能開關 - 在這裡控制是否啟用AI建議
+AI_SUGGESTIONS_ENABLED = True  # 設為 False 可關閉AI建議功能
+
+# 初始化 OpenAI 客戶端
+if OPENAI_AVAILABLE and AI_SUGGESTIONS_ENABLED:
+    try:
+        client = OpenAI()  # 會自動從環境變數 OPENAI_API_KEY 讀取
+        print("OpenAI 客戶端初始化成功")
+    except Exception as e:
+        client = None
+        print(f"OpenAI 客戶端初始化失敗: {e}")
+        AI_SUGGESTIONS_ENABLED = False
+else:
+    client = None
 
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
@@ -139,6 +166,106 @@ GENDERS = {
    'male': '男生',
    'female': '女生'
 }
+
+def generate_ai_suggestions(child, study_sessions):
+    """使用 OpenAI API 生成個人化學習建議"""
+    if not AI_SUGGESTIONS_ENABLED or not client:
+        return "AI建議功能目前不可用"
+    
+    try:
+        # 準備學習數據摘要
+        total_sessions = len(study_sessions)
+        if total_sessions == 0:
+            learning_summary = "目前尚無學習記錄"
+        else:
+            total_minutes = sum(s.duration_minutes for s in study_sessions)
+            attention_sessions = [s for s in study_sessions if s.avg_attention]
+            
+            if attention_sessions:
+                avg_attention = sum(s.avg_attention for s in attention_sessions) / len(attention_sessions)
+                avg_attention_percent = round(avg_attention * 100 / 3)
+            else:
+                avg_attention_percent = 0
+            
+            # 科目統計
+            subject_stats = {}
+            for session in study_sessions:
+                if session.subject not in subject_stats:
+                    subject_stats[session.subject] = {
+                        'count': 0, 'total_time': 0, 'avg_attention': 0
+                    }
+                subject_stats[session.subject]['count'] += 1
+                subject_stats[session.subject]['total_time'] += session.duration_minutes
+                if session.avg_attention:
+                    subject_stats[session.subject]['avg_attention'] += session.avg_attention
+            
+            # 找出最佳和需要改進的科目
+            best_subject = ""
+            worst_subject = ""
+            if subject_stats:
+                best_perf = 0
+                worst_perf = float('inf')
+                for subject, stats in subject_stats.items():
+                    if stats['count'] > 0:
+                        avg_att = stats['avg_attention'] / stats['count'] if stats['avg_attention'] > 0 else 0
+                        if avg_att > best_perf:
+                            best_perf = avg_att
+                            best_subject = SUBJECTS.get(subject, subject)
+                        if avg_att < worst_perf and avg_att > 0:
+                            worst_perf = avg_att
+                            worst_subject = SUBJECTS.get(subject, subject)
+            
+            learning_summary = f"""
+            總學習次數: {total_sessions}次
+            總學習時間: {total_minutes}分鐘
+            平均專注度: {avg_attention_percent}%
+            表現最佳科目: {best_subject}
+            需要加強科目: {worst_subject}
+            """
+        
+        # 構建 AI 提示詞
+        prompt = f"""
+        你是一位專業的教育顧問，請根據以下學生資訊提供具體且實用的學習建議：
+
+        學生基本資訊：
+        - 暱稱: {child.nickname}
+        - 年齡: {child.age}歲
+        - 性別: {GENDERS.get(child.gender, child.gender)}
+        - 教育階段: {EDUCATION_STAGES.get(child.education_stage, child.education_stage)}
+
+        學習狀況摘要：
+        {learning_summary}
+
+        請提供以下方面的建議，每個建議都要具體且可執行：
+        1. 根據年齡和教育階段的學習策略建議
+        2. 專注力提升的具體方法
+        3. 學習時間安排和休息規劃
+        4. 基於目前表現的改進建議
+        5. 適合該年齡層的學習工具或方法
+
+        最後給他一段話，最好可以鼓勵她，或支持他某些事物，以鼓勵小孩的方式可以在開頭叫他的名字，將上述五點用一段話來呈現，不要條列式回應，並控制在300字內，口吻要像溫柔的個人化導師，開導學生
+
+        請用繁體中文回覆，建議要實用且適合台灣的教育環境。每個建議控制在50字以內，總回覆控制在300字以內。
+        """
+        
+        # 呼叫 OpenAI API
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "你是一位專業的教育顧問，專長於為台灣學生提供個人化學習建議。"},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=800,
+            temperature=0.7
+        )
+        
+        ai_suggestion = response.choices[0].message.content.strip()
+        print(f"AI建議生成成功，長度: {len(ai_suggestion)}")
+        return ai_suggestion
+        
+    except Exception as e:
+        print(f"AI建議生成失敗: {e}")
+        return f"AI建議暫時無法生成，請稍後再試。錯誤訊息: {str(e)}"
 
 def upgrade_database():
     """升級資料庫結構"""
@@ -554,12 +681,19 @@ def smart_suggestions():
    # 生成個人化建議
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
+   # 生成AI建議
+   ai_suggestion = None
+   if AI_SUGGESTIONS_ENABLED:
+       ai_suggestion = generate_ai_suggestions(child, study_sessions)
+   
    # 準備視覺化數據
    performance_data = prepare_performance_data(study_sessions)
    
    return render_template('smart_suggestions.html',
                         child=child,
                         suggestions=suggestions,
+                        ai_suggestion=ai_suggestion,
+                        ai_enabled=AI_SUGGESTIONS_ENABLED,
                         performance_data=performance_data)
 
 @app.route('/generate_report/<int:child_id>')
@@ -575,8 +709,13 @@ def generate_report(child_id):
    # 獲取所有學習記錄
    study_sessions = StudySession.query.filter_by(child_id=child.id).all()
    
+   # 生成AI建議（如果啟用）
+   ai_suggestion = None
+   if AI_SUGGESTIONS_ENABLED:
+       ai_suggestion = generate_ai_suggestions(child, study_sessions)
+   
    # 生成PDF報告
-   pdf_path = create_comprehensive_report(child, study_sessions)
+   pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
    
    return send_file(pdf_path, as_attachment=True, 
                    download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
@@ -1152,7 +1291,7 @@ def get_subject_excellence_suggestion(subject, age, gender, education_stage, att
     
     return base_suggestion
 
-def create_comprehensive_report(child, study_sessions):
+def create_comprehensive_report(child, study_sessions, ai_suggestion=None):
     """創建包含數據分析和智慧建議的完整PDF報告"""
     filename = f'report_{child.id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
     filepath = os.path.join('reports', filename)
@@ -1190,8 +1329,6 @@ def create_comprehensive_report(child, study_sessions):
         spaceBefore=20
     )
     
-    
-    
     sub_heading_style = ParagraphStyle(
         'SubHeading',
         parent=styles['Heading2'],
@@ -1209,6 +1346,20 @@ def create_comprehensive_report(child, study_sessions):
         fontName=font_name,
         fontSize=12,
         leading=18
+    )
+    
+    ai_style = ParagraphStyle(
+        'AIStyle',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=12,
+        leading=18,
+        leftIndent=20,
+        rightIndent=20,
+        borderWidth=1,
+        borderColor=colors.HexColor('#3498DB'),
+        borderPadding=10,
+        backColor=colors.HexColor('#F8F9FC')
     )
     
     # 標題頁
@@ -1238,6 +1389,22 @@ def create_comprehensive_report(child, study_sessions):
     ]))
     
     story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # AI建議區塊（如果有的話）
+    if ai_suggestion and AI_SUGGESTIONS_ENABLED:
+        story.append(Paragraph('AI個人化建議', heading_style))
+        story.append(Spacer(1, 10))
+        
+        # 將AI建議按段落分割
+        ai_paragraphs = ai_suggestion.split('\n')
+        for paragraph in ai_paragraphs:
+            if paragraph.strip():
+                story.append(Paragraph(paragraph.strip(), ai_style))
+                story.append(Spacer(1, 8))
+        
+        story.append(Spacer(1, 15))
+    
     story.append(PageBreak())
     
     # 數據分析部分
@@ -1461,6 +1628,7 @@ def create_comprehensive_report(child, study_sessions):
     # 生成報告
     doc.build(story)
     return filepath
+
 @app.route('/logout')
 def logout():
    """登出功能"""

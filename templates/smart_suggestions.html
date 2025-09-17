@@ -118,6 +118,45 @@
     
     <!-- 個人化建議區域 -->
     <div class="row">
+        <!-- AI個人化建議 -->
+        {% if ai_enabled and ai_suggestion %}
+        <div class="col-12 mb-3">
+            <div class="card suggestion-card ai-suggestion-card">
+                <div class="card-header bg-gradient-ai text-white py-2">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>
+                        AI個人化建議
+                        <span class="badge bg-light text-dark ms-2">
+                            <i class="fas fa-magic me-1"></i>智能分析
+                        </span>
+                    </h5>
+                </div>
+                <div class="card-body py-3 ai-suggestion-body">
+                    <div class="ai-suggestion-content">
+                        {{ ai_suggestion | replace('\n', '<br>') | safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% elif ai_enabled %}
+        <div class="col-12 mb-3">
+            <div class="card suggestion-card">
+                <div class="card-header bg-secondary text-white py-2">
+                    <h5 class="mb-0">
+                        <i class="fas fa-robot me-2"></i>
+                        AI個人化建議
+                    </h5>
+                </div>
+                <div class="card-body py-3">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                        <p>AI正在分析學習數據，請稍候...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <!-- 年齡適性建議 -->
         {% if suggestions.age_appropriate %}
         <div class="col-lg-6 mb-3">
@@ -235,6 +274,73 @@
 </div>
 
 <style>
+/* AI建議卡片特殊樣式 */
+.ai-suggestion-card {
+    border: 2px solid transparent;
+    background: linear-gradient(white, white) padding-box,
+                linear-gradient(45deg, #667eea 0%, #764ba2 100%) border-box;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+}
+
+.bg-gradient-ai {
+    background: linear-gradient(45deg, #667eea 0%, #764ba2 100%) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.bg-gradient-ai::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+.ai-suggestion-body {
+    background: linear-gradient(135deg, #f8f9fc 0%, #e9ecef 100%);
+    position: relative;
+}
+
+.ai-suggestion-content {
+    font-size: 1rem;
+    line-height: 1.7;
+    color: #2c3e50;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    position: relative;
+}
+
+.ai-suggestion-content::before {
+    content: '"';
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    font-size: 2rem;
+    color: #667eea;
+    font-family: serif;
+}
+
+.ai-suggestion-content::after {
+    content: '"';
+    position: absolute;
+    bottom: -20px;
+    right: 10px;
+    font-size: 2rem;
+    color: #667eea;
+    font-family: serif;
+}
+
 /* 精簡版效能指標 */
 .performance-metric.compact {
     padding: 0.75rem;
@@ -356,6 +462,11 @@
     .col-md-6.mb-2 {
         margin-bottom: 0.5rem !important;
     }
+    
+    .ai-suggestion-content {
+        font-size: 0.9rem;
+        padding: 0.8rem;
+    }
 }
 
 @media (max-width: 576px) {
@@ -383,5 +494,16 @@
     .info-item {
         font-size: 0.85rem;
     }
+    
+    .ai-suggestion-content {
+        font-size: 0.85rem;
+        padding: 0.6rem;
+    }
+    
+    .ai-suggestion-content::before,
+    .ai-suggestion-content::after {
+        font-size: 1.5rem;
+    }
 }
+</style>
 {% endblock %}
