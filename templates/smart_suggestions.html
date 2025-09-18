@@ -12,9 +12,11 @@
                     {{ child.nickname }} 的個人化學習建議
                 </h2>
                 <div>
+                    {% if ai_suggestion %}
                     <a href="{{ url_for('generate_report', child_id=child.id) }}" class="btn btn-primary me-2">
                         <i class="fas fa-file-pdf me-2"></i>下載分析報告
                     </a>
+                    {% endif %}
                     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
                         <i class="fas fa-arrow-left me-2"></i>返回學習中心
                     </a>
@@ -119,7 +121,7 @@
     <!-- 個人化建議區域 -->
     <div class="row">
         <!-- AI個人化建議 -->
-        {% if ai_enabled and ai_suggestion %}
+        {% if ai_enabled %}
         <div class="col-12 mb-3">
             <div class="card suggestion-card ai-suggestion-card">
                 <div class="card-header bg-gradient-ai text-white py-2">
@@ -132,26 +134,33 @@
                     </h5>
                 </div>
                 <div class="card-body py-3 ai-suggestion-body">
+                    {% if ai_suggestion %}
                     <div class="ai-suggestion-content">
                         {{ ai_suggestion | replace('\n', '<br>') | safe }}
                     </div>
-                </div>
-            </div>
-        </div>
-        {% elif ai_enabled %}
-        <div class="col-12 mb-3">
-            <div class="card suggestion-card">
-                <div class="card-header bg-secondary text-white py-2">
-                    <h5 class="mb-0">
-                        <i class="fas fa-robot me-2"></i>
-                        AI個人化建議
-                    </h5>
-                </div>
-                <div class="card-body py-3">
-                    <div class="text-center text-muted">
-                        <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
-                        <p>AI正在分析學習數據，請稍候...</p>
+                    {% else %}
+                    <!-- AI 載入動畫 -->
+                    <div id="ai-loading" class="text-center">
+                        <div class="ai-thinking-animation mb-3">
+                            <div class="thinking-dots">
+                                <div class="dot dot1"></div>
+                                <div class="dot dot2"></div>
+                                <div class="dot dot3"></div>
+                            </div>
+                        </div>
+                        <h5 class="ai-thinking-text mb-2">AI 正在分析學習數據...</h5>
+                        <p class="text-muted mb-0">請稍候片刻，我正在為 {{ child.nickname }} 生成個人化建議</p>
+                        <div class="progress mt-3" style="height: 6px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                                 role="progressbar" style="width: 100%"></div>
+                        </div>
                     </div>
+                    
+                    <!-- AI 建議內容區域（初始隱藏） -->
+                    <div id="ai-suggestion-content" class="ai-suggestion-content" style="display: none;">
+                        <!-- 這裡會由 JavaScript 填入 AI 建議內容 -->
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -341,6 +350,48 @@
     font-family: serif;
 }
 
+/* AI 思考動畫樣式 */
+.ai-thinking-animation {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 80px;
+}
+
+.thinking-dots {
+    display: flex;
+    gap: 8px;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    animation: thinking 1.4s infinite ease-in-out;
+}
+
+.dot1 { animation-delay: -0.32s; }
+.dot2 { animation-delay: -0.16s; }
+.dot3 { animation-delay: 0s; }
+
+@keyframes thinking {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
+
+.ai-thinking-text {
+    color: #667eea;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
 /* 精簡版效能指標 */
 .performance-metric.compact {
     padding: 0.75rem;
@@ -467,6 +518,19 @@
         font-size: 0.9rem;
         padding: 0.8rem;
     }
+    
+    .ai-thinking-text {
+        font-size: 1rem;
+    }
+    
+    .thinking-dots {
+        gap: 6px;
+    }
+    
+    .dot {
+        width: 10px;
+        height: 10px;
+    }
 }
 
 @media (max-width: 576px) {
@@ -504,6 +568,109 @@
     .ai-suggestion-content::after {
         font-size: 1.5rem;
     }
+    
+    .ai-thinking-text {
+        font-size: 0.9rem;
+    }
+    
+    .ai-thinking-animation {
+        height: 60px;
+    }
 }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    {% if ai_enabled and not ai_suggestion %}
+    // 如果 AI 功能啟用但還沒有建議，則自動生成
+    generateAISuggestion();
+    {% endif %}
+});
+
+async function generateAISuggestion() {
+    try {
+        const response = await fetch('/generate_ai_suggestion', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 隱藏載入動畫
+            const loadingDiv = document.getElementById('ai-loading');
+            const contentDiv = document.getElementById('ai-suggestion-content');
+            
+            if (loadingDiv && contentDiv) {
+                // 添加淡出效果
+                loadingDiv.style.opacity = '0';
+                setTimeout(() => {
+                    loadingDiv.style.display = 'none';
+                    
+                    // 填入AI建議內容
+                    contentDiv.innerHTML = result.ai_suggestion.replace(/\n/g, '<br>');
+                    contentDiv.style.display = 'block';
+                    contentDiv.style.opacity = '0';
+                    
+                    // 添加淡入效果
+                    setTimeout(() => {
+                        contentDiv.style.transition = 'opacity 0.5s ease-in';
+                        contentDiv.style.opacity = '1';
+                    }, 100);
+                    
+                    // 如果有PDF報告，顯示下載按鈕
+                    if (result.has_pdf) {
+                        const downloadBtn = document.querySelector('a[href*="generate_report"]');
+                        if (!downloadBtn) {
+                            // 創建下載按鈕
+                            const buttonContainer = document.querySelector('.d-flex.justify-content-between .div:last-child');
+                            if (buttonContainer) {
+                                const newDownloadBtn = document.createElement('a');
+                                newDownloadBtn.href = `/generate_report/{{ child.id }}`;
+                                newDownloadBtn.className = 'btn btn-primary me-2';
+                                newDownloadBtn.innerHTML = '<i class="fas fa-file-pdf me-2"></i>下載分析報告';
+                                buttonContainer.insertBefore(newDownloadBtn, buttonContainer.firstChild);
+                            }
+                        }
+                    }
+                    
+                }, 500);
+            }
+        } else {
+            // 顯示錯誤訊息
+            const loadingDiv = document.getElementById('ai-loading');
+            if (loadingDiv) {
+                loadingDiv.innerHTML = `
+                    <div class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                        <h5>AI建議生成失敗</h5>
+                        <p>${result.message}</p>
+                        <button class="btn btn-outline-primary" onclick="generateAISuggestion()">
+                            <i class="fas fa-redo me-2"></i>重新生成
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+    } catch (error) {
+        console.error('生成AI建議時發生錯誤:', error);
+        const loadingDiv = document.getElementById('ai-loading');
+        if (loadingDiv) {
+            loadingDiv.innerHTML = `
+                <div class="text-center text-danger">
+                    <i class="fas fa-exclamation-triangle fa-2x mb-3"></i>
+                    <h5>網路錯誤</h5>
+                    <p>無法連接到AI服務，請檢查網路連線</p>
+                    <button class="btn btn-outline-primary" onclick="generateAISuggestion()">
+                        <i class="fas fa-redo me-2"></i>重新生成
+                    </button>
+                </div>
+            `;
+        }
+    }
+}
+</script>
 {% endblock %}
