@@ -768,34 +768,8 @@ def smart_suggestions():
    # 生成個人化建議
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
-   # 檢查是否需要重新生成 AI 建議和 PDF
-   should_regenerate = False
-   if not child.ai_suggestion:
-       should_regenerate = True
-   elif child.pdf_generated_at:
-       # 檢查最近的學習記錄是否在 PDF 生成之後
-       if study_sessions and study_sessions[-1].start_time > child.pdf_generated_at:
-           should_regenerate = True
-   else:
-       should_regenerate = True
-   
-   if should_regenerate:
-       # 生成新的 AI 建議和 PDF 報告
-       ai_suggestion = None
-       pdf_path = None
-       
-       if AI_SUGGESTIONS_ENABLED:
-           ai_suggestion = generate_ai_suggestions(child, study_sessions)
-           child.ai_suggestion = ai_suggestion
-       
-       # 生成 PDF 報告
-       pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
-       child.pdf_report_path = pdf_path
-       child.pdf_generated_at = datetime.utcnow()
-       
-       db.session.commit()
-   else:
-       ai_suggestion = child.ai_suggestion
+   # 移除自動生成 AI 建議的邏輯，改為手動觸發
+   ai_suggestion = child.ai_suggestion  # 直接取得現有的建議
    
    # 準備視覺化數據
    performance_data = prepare_performance_data(study_sessions)
@@ -826,26 +800,21 @@ def generate_ai_suggestion_api():
     try:
         ai_suggestion = generate_ai_suggestions(child, study_sessions)
         
-        # 同時生成 PDF 報告
-        suggestions = generate_comprehensive_suggestions(child, study_sessions)
-        pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
-        
-        # 儲存到資料庫
+        # 儲存 AI 建議到資料庫，但不立即生成 PDF
         child.ai_suggestion = ai_suggestion
-        child.pdf_report_path = pdf_path
-        child.pdf_generated_at = datetime.utcnow()
+        child.pdf_generated_at = None  # 重置 PDF 生成時間，表示需要重新生成
         db.session.commit()
         
         return jsonify({
             'success': True, 
-            'ai_suggestion': ai_suggestion,
-            'has_pdf': True
+            'ai_suggestion': ai_suggestion
         })
         
     except Exception as e:
         print(f"生成 AI 建議時發生錯誤: {e}")
         return jsonify({'success': False, 'message': '生成 AI 建議時發生錯誤'})
 
+# 修改 generate_report 路由
 @app.route('/generate_report/<int:child_id>')
 def generate_report(child_id):
    """下載PDF學習報告"""
@@ -856,14 +825,24 @@ def generate_report(child_id):
    if not child:
        return redirect(url_for('dashboard'))
    
-   # 檢查是否已有 PDF 報告
-   if child.pdf_report_path and os.path.exists(child.pdf_report_path):
-       return send_file(child.pdf_report_path, as_attachment=True, 
-                       download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
-   else:
-       # 如果沒有現成的報告，生成新的
-       study_sessions = StudySession.query.filter_by(child_id=child.id).all()
+   study_sessions = StudySession.query.filter_by(child_id=child.id).all()
+   
+   # 檢查是否需要重新生成 PDF
+   should_regenerate = False
+   
+   # 如果沒有現成的 PDF 或者 PDF 生成時間為空（表示AI建議已更新）
+   if not child.pdf_report_path or not os.path.exists(child.pdf_report_path) or not child.pdf_generated_at:
+       should_regenerate = True
+   elif child.pdf_generated_at and study_sessions:
+       # 檢查最近的學習記錄是否在 PDF 生成之後
+       latest_session = max(study_sessions, key=lambda x: x.start_time)
+       if latest_session.start_time > child.pdf_generated_at:
+           should_regenerate = True
+   
+   if should_regenerate:
+       # 生成新的 PDF 報告
        ai_suggestion = child.ai_suggestion
+       suggestions = generate_comprehensive_suggestions(child, study_sessions)
        
        pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
        child.pdf_report_path = pdf_path
@@ -872,6 +851,12 @@ def generate_report(child_id):
        
        return send_file(pdf_path, as_attachment=True, 
                        download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
+   else:
+       # 使用現有的 PDF 報告
+       return send_file(child.pdf_report_path, as_attachment=True, 
+                       download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
+
+
 
 @app.route('/delete_child/<int:child_id>', methods=['POST'])
 def delete_child(child_id):

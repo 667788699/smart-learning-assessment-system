@@ -125,22 +125,42 @@
         <div class="col-12 mb-3">
             <div class="card suggestion-card ai-suggestion-card">
                 <div class="card-header bg-gradient-ai text-white py-2">
-                    <h5 class="mb-0">
-                        <i class="fas fa-robot me-2"></i>
-                        AI個人化建議
-                        <span class="badge bg-light text-dark ms-2">
-                            <i class="fas fa-magic me-1"></i>智能分析
-                        </span>
-                    </h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-robot me-2"></i>
+                            AI個人化建議
+                            <span class="badge bg-light text-dark ms-2">
+                                <i class="fas fa-magic me-1"></i>智能分析
+                            </span>
+                        </h5>
+                        {% if not ai_suggestion %}
+                        <button id="generateAIBtn" class="btn btn-light btn-sm" onclick="generateAISuggestion()">
+                            <i class="fas fa-magic me-1"></i>生成建議
+                        </button>
+                        {% else %}
+                        <button id="regenerateAIBtn" class="btn btn-light btn-sm" onclick="generateAISuggestion()">
+                            <i class="fas fa-redo me-1"></i>重新生成
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
                 <div class="card-body py-3 ai-suggestion-body">
                     {% if ai_suggestion %}
-                    <div class="ai-suggestion-content">
+                    <!-- 已有 AI 建議 -->
+                    <div id="ai-suggestion-content" class="ai-suggestion-content">
                         {{ ai_suggestion | replace('\n', '<br>') | safe }}
                     </div>
                     {% else %}
-                    <!-- AI 載入動畫 -->
-                    <div id="ai-loading" class="text-center">
+                    <!-- 尚未生成建議 -->
+                    <div id="ai-empty-state" class="text-center py-4">
+                        <i class="fas fa-brain fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted mb-2">尚未生成 AI 建議</h5>
+                        <p class="text-muted mb-0">點擊「生成建議」按鈕，讓 AI 為 {{ child.nickname }} 分析學習數據並提供個人化建議</p>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- AI 載入動畫（初始隱藏） -->
+                    <div id="ai-loading" class="text-center" style="display: none;">
                         <div class="ai-thinking-animation mb-3">
                             <div class="thinking-dots">
                                 <div class="dot dot1"></div>
@@ -156,11 +176,10 @@
                         </div>
                     </div>
                     
-                    <!-- AI 建議內容區域（初始隱藏） -->
-                    <div id="ai-suggestion-content" class="ai-suggestion-content" style="display: none;">
+                    <!-- AI 建議內容區域（動態顯示） -->
+                    <div id="ai-suggestion-display" class="ai-suggestion-content" style="display: none;">
                         <!-- 這裡會由 JavaScript 填入 AI 建議內容 -->
                     </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
@@ -580,14 +599,35 @@
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    {% if ai_enabled and not ai_suggestion %}
-    // 如果 AI 功能啟用但還沒有建議，則自動生成
-    generateAISuggestion();
-    {% endif %}
-});
-
 async function generateAISuggestion() {
+    // 隱藏現有內容
+    const emptyState = document.getElementById('ai-empty-state');
+    const existingContent = document.getElementById('ai-suggestion-content');
+    const loadingDiv = document.getElementById('ai-loading');
+    const displayDiv = document.getElementById('ai-suggestion-display');
+    const generateBtn = document.getElementById('generateAIBtn');
+    const regenerateBtn = document.getElementById('regenerateAIBtn');
+    
+    // 隱藏空狀態和現有內容
+    if (emptyState) emptyState.style.display = 'none';
+    if (existingContent) existingContent.style.display = 'none';
+    if (displayDiv) displayDiv.style.display = 'none';
+    
+    // 禁用按鈕
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中...';
+    }
+    if (regenerateBtn) {
+        regenerateBtn.disabled = true;
+        regenerateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>生成中...';
+    }
+    
+    // 顯示載入動畫
+    if (loadingDiv) {
+        loadingDiv.style.display = 'block';
+    }
+    
     try {
         const response = await fetch('/generate_ai_suggestion', {
             method: 'POST',
@@ -600,39 +640,56 @@ async function generateAISuggestion() {
         
         if (result.success) {
             // 隱藏載入動畫
-            const loadingDiv = document.getElementById('ai-loading');
-            const contentDiv = document.getElementById('ai-suggestion-content');
-            
-            if (loadingDiv && contentDiv) {
-                // 添加淡出效果
+            if (loadingDiv) {
                 loadingDiv.style.opacity = '0';
                 setTimeout(() => {
                     loadingDiv.style.display = 'none';
                     
                     // 填入AI建議內容
-                    contentDiv.innerHTML = result.ai_suggestion.replace(/\n/g, '<br>');
-                    contentDiv.style.display = 'block';
-                    contentDiv.style.opacity = '0';
+                    if (displayDiv) {
+                        displayDiv.innerHTML = result.ai_suggestion.replace(/\n/g, '<br>');
+                        displayDiv.style.display = 'block';
+                        displayDiv.style.opacity = '0';
+                        
+                        // 添加淡入效果
+                        setTimeout(() => {
+                            displayDiv.style.transition = 'opacity 0.5s ease-in';
+                            displayDiv.style.opacity = '1';
+                        }, 100);
+                    }
                     
-                    // 添加淡入效果
-                    setTimeout(() => {
-                        contentDiv.style.transition = 'opacity 0.5s ease-in';
-                        contentDiv.style.opacity = '1';
-                    }, 100);
+                    // 更新按鈕狀態
+                    if (generateBtn) {
+                        generateBtn.style.display = 'none';
+                    }
+                    if (regenerateBtn) {
+                        regenerateBtn.style.display = 'inline-block';
+                        regenerateBtn.disabled = false;
+                        regenerateBtn.innerHTML = '<i class="fas fa-redo me-1"></i>重新生成';
+                    } else {
+                        // 如果沒有重新生成按鈕，創建一個
+                        const buttonContainer = document.querySelector('.card-header .d-flex');
+                        if (buttonContainer) {
+                            const newRegenBtn = document.createElement('button');
+                            newRegenBtn.id = 'regenerateAIBtn';
+                            newRegenBtn.className = 'btn btn-light btn-sm';
+                            newRegenBtn.onclick = generateAISuggestion;
+                            newRegenBtn.innerHTML = '<i class="fas fa-redo me-1"></i>重新生成';
+                            buttonContainer.appendChild(newRegenBtn);
+                        }
+                    }
                     
-                    // 如果有PDF報告，顯示下載按鈕
-                    if (result.has_pdf) {
-                        const downloadBtn = document.querySelector('a[href*="generate_report"]');
-                        if (!downloadBtn) {
-                            // 創建下載按鈕
-                            const buttonContainer = document.querySelector('.d-flex.justify-content-between .div:last-child');
-                            if (buttonContainer) {
-                                const newDownloadBtn = document.createElement('a');
-                                newDownloadBtn.href = `/generate_report/{{ child.id }}`;
-                                newDownloadBtn.className = 'btn btn-primary me-2';
-                                newDownloadBtn.innerHTML = '<i class="fas fa-file-pdf me-2"></i>下載分析報告';
-                                buttonContainer.insertBefore(newDownloadBtn, buttonContainer.firstChild);
-                            }
+                    // 檢查並添加下載 PDF 按鈕
+                    const downloadBtn = document.querySelector('a[href*="generate_report"]');
+                    if (!downloadBtn) {
+                        const buttonContainer = document.querySelector('.d-flex.justify-content-between .div:last-child') || 
+                                             document.querySelector('.d-flex.justify-content-between div:last-child');
+                        if (buttonContainer) {
+                            const newDownloadBtn = document.createElement('a');
+                            newDownloadBtn.href = `/generate_report/{{ child.id }}`;
+                            newDownloadBtn.className = 'btn btn-primary me-2';
+                            newDownloadBtn.innerHTML = '<i class="fas fa-file-pdf me-2"></i>下載分析報告';
+                            buttonContainer.insertBefore(newDownloadBtn, buttonContainer.firstChild);
                         }
                     }
                     
@@ -640,7 +697,6 @@ async function generateAISuggestion() {
             }
         } else {
             // 顯示錯誤訊息
-            const loadingDiv = document.getElementById('ai-loading');
             if (loadingDiv) {
                 loadingDiv.innerHTML = `
                     <div class="text-center text-danger">
@@ -648,16 +704,26 @@ async function generateAISuggestion() {
                         <h5>AI建議生成失敗</h5>
                         <p>${result.message}</p>
                         <button class="btn btn-outline-primary" onclick="generateAISuggestion()">
-                            <i class="fas fa-redo me-2"></i>重新生成
+                            <i class="fas fa-redo me-2"></i>重新嘗試
                         </button>
                     </div>
                 `;
+            }
+            
+            // 恢復按鈕狀態
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="fas fa-magic me-1"></i>生成建議';
+            }
+            if (regenerateBtn) {
+                regenerateBtn.disabled = false;
+                regenerateBtn.innerHTML = '<i class="fas fa-redo me-1"></i>重新生成';
             }
         }
         
     } catch (error) {
         console.error('生成AI建議時發生錯誤:', error);
-        const loadingDiv = document.getElementById('ai-loading');
+        
         if (loadingDiv) {
             loadingDiv.innerHTML = `
                 <div class="text-center text-danger">
@@ -665,10 +731,20 @@ async function generateAISuggestion() {
                     <h5>網路錯誤</h5>
                     <p>無法連接到AI服務，請檢查網路連線</p>
                     <button class="btn btn-outline-primary" onclick="generateAISuggestion()">
-                        <i class="fas fa-redo me-2"></i>重新生成
+                        <i class="fas fa-redo me-2"></i>重新嘗試
                     </button>
                 </div>
             `;
+        }
+        
+        // 恢復按鈕狀態
+        if (generateBtn) {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="fas fa-magic me-1"></i>生成建議';
+        }
+        if (regenerateBtn) {
+            regenerateBtn.disabled = false;
+            regenerateBtn.innerHTML = '<i class="fas fa-redo me-1"></i>重新生成';
         }
     }
 }
