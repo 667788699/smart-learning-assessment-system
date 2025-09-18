@@ -184,6 +184,10 @@ class Child(db.Model):
    age = db.Column(db.Integer, nullable=False)
    education_stage = db.Column(db.String(20), nullable=False)  # elementary/middle/high
    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+   # 新增: 保存 AI 建議和 PDF 檔案路徑
+   ai_suggestion = db.Column(db.Text)
+   pdf_report_path = db.Column(db.String(255))
+   pdf_generated_at = db.Column(db.DateTime)
    study_sessions = db.relationship('StudySession', backref='child', lazy=True, cascade='all, delete-orphan')
 
 class StudySession(db.Model):
@@ -646,6 +650,13 @@ def delete_session(session_id):
    ).first()
    
    if study_session:
+       # 刪除後需要重新生成 AI 建議和 PDF
+       child = Child.query.get(session['child_id'])
+       if child:
+           child.ai_suggestion = None
+           child.pdf_report_path = None
+           child.pdf_generated_at = None
+       
        db.session.delete(study_session)
        db.session.commit()
        return jsonify({'success': True})
@@ -757,10 +768,8 @@ def smart_suggestions():
    # 生成個人化建議
    suggestions = generate_comprehensive_suggestions(child, study_sessions)
    
-   # 生成AI建議
-   ai_suggestion = None
-   if AI_SUGGESTIONS_ENABLED:
-       ai_suggestion = generate_ai_suggestions(child, study_sessions)
+   # 移除自動生成 AI 建議的邏輯，改為手動觸發
+   ai_suggestion = child.ai_suggestion  # 直接取得現有的建議
    
    # 準備視覺化數據
    performance_data = prepare_performance_data(study_sessions)
@@ -772,9 +781,43 @@ def smart_suggestions():
                         ai_enabled=AI_SUGGESTIONS_ENABLED,
                         performance_data=performance_data)
 
+# 新增：生成 AI 建議的 API 路由
+@app.route('/generate_ai_suggestion', methods=['POST'])
+def generate_ai_suggestion_api():
+    """非同步生成 AI 建議的 API"""
+    if 'user_id' not in session or 'child_id' not in session:
+        return jsonify({'success': False, 'message': '請先登入並選擇小孩'})
+    
+    if not AI_SUGGESTIONS_ENABLED:
+        return jsonify({'success': False, 'message': 'AI 功能未啟用'})
+    
+    child = Child.query.filter_by(id=session['child_id'], user_id=session['user_id']).first()
+    if not child:
+        return jsonify({'success': False, 'message': '找不到小孩檔案'})
+    
+    study_sessions = StudySession.query.filter_by(child_id=child.id).order_by(StudySession.start_time.asc()).all()
+    
+    try:
+        ai_suggestion = generate_ai_suggestions(child, study_sessions)
+        
+        # 儲存 AI 建議到資料庫，但不立即生成 PDF
+        child.ai_suggestion = ai_suggestion
+        child.pdf_generated_at = None  # 重置 PDF 生成時間，表示需要重新生成
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'ai_suggestion': ai_suggestion
+        })
+        
+    except Exception as e:
+        print(f"生成 AI 建議時發生錯誤: {e}")
+        return jsonify({'success': False, 'message': '生成 AI 建議時發生錯誤'})
+
+# 修改 generate_report 路由
 @app.route('/generate_report/<int:child_id>')
 def generate_report(child_id):
-   """生成PDF學習報告 - 從智慧建議頁面"""
+   """下載PDF學習報告"""
    if 'user_id' not in session:
        return redirect(url_for('login'))
    
@@ -782,19 +825,38 @@ def generate_report(child_id):
    if not child:
        return redirect(url_for('dashboard'))
    
-   # 獲取所有學習記錄
    study_sessions = StudySession.query.filter_by(child_id=child.id).all()
    
-   # 生成AI建議（如果啟用）
-   ai_suggestion = None
-   if AI_SUGGESTIONS_ENABLED:
-       ai_suggestion = generate_ai_suggestions(child, study_sessions)
+   # 檢查是否需要重新生成 PDF
+   should_regenerate = False
    
-   # 生成PDF報告
-   pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
+   # 如果沒有現成的 PDF 或者 PDF 生成時間為空（表示AI建議已更新）
+   if not child.pdf_report_path or not os.path.exists(child.pdf_report_path) or not child.pdf_generated_at:
+       should_regenerate = True
+   elif child.pdf_generated_at and study_sessions:
+       # 檢查最近的學習記錄是否在 PDF 生成之後
+       latest_session = max(study_sessions, key=lambda x: x.start_time)
+       if latest_session.start_time > child.pdf_generated_at:
+           should_regenerate = True
    
-   return send_file(pdf_path, as_attachment=True, 
-                   download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
+   if should_regenerate:
+       # 生成新的 PDF 報告
+       ai_suggestion = child.ai_suggestion
+       suggestions = generate_comprehensive_suggestions(child, study_sessions)
+       
+       pdf_path = create_comprehensive_report(child, study_sessions, ai_suggestion)
+       child.pdf_report_path = pdf_path
+       child.pdf_generated_at = datetime.utcnow()
+       db.session.commit()
+       
+       return send_file(pdf_path, as_attachment=True, 
+                       download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
+   else:
+       # 使用現有的 PDF 報告
+       return send_file(child.pdf_report_path, as_attachment=True, 
+                       download_name=f'學習報告_{child.nickname}_{datetime.now().strftime("%Y%m%d")}.pdf')
+
+
 
 @app.route('/delete_child/<int:child_id>', methods=['POST'])
 def delete_child(child_id):
@@ -804,6 +866,13 @@ def delete_child(child_id):
    
    child = Child.query.filter_by(id=child_id, user_id=session['user_id']).first()
    if child:
+       # 刪除相關的 PDF 檔案
+       if child.pdf_report_path and os.path.exists(child.pdf_report_path):
+           try:
+               os.remove(child.pdf_report_path)
+           except:
+               pass
+       
        db.session.delete(child)
        db.session.commit()
        
@@ -826,6 +895,17 @@ def reset_learning_history(child_id):
    if child:
        # 刪除所有學習記錄
        StudySession.query.filter_by(child_id=child_id).delete()
+       
+       # 清除 AI 建議和 PDF 報告
+       child.ai_suggestion = None
+       if child.pdf_report_path and os.path.exists(child.pdf_report_path):
+           try:
+               os.remove(child.pdf_report_path)
+           except:
+               pass
+       child.pdf_report_path = None
+       child.pdf_generated_at = None
+       
        db.session.commit()
        
        return jsonify({'success': True})
@@ -840,6 +920,15 @@ def delete_account():
    
    user = User.query.get(session['user_id'])
    if user:
+       # 刪除所有相關的 PDF 檔案
+       children = Child.query.filter_by(user_id=user.id).all()
+       for child in children:
+           if child.pdf_report_path and os.path.exists(child.pdf_report_path):
+               try:
+                   os.remove(child.pdf_report_path)
+               except:
+                   pass
+       
        db.session.delete(user)
        db.session.commit()
        session.clear()
@@ -913,6 +1002,16 @@ def update_child_profile():
        child.gender = data.get('gender')
        child.age = age
        child.education_stage = data.get('education_stage')
+       
+       # 更新後需要重新生成建議
+       child.ai_suggestion = None
+       if child.pdf_report_path and os.path.exists(child.pdf_report_path):
+           try:
+               os.remove(child.pdf_report_path)
+           except:
+               pass
+       child.pdf_report_path = None
+       child.pdf_generated_at = None
        
        db.session.commit()
        
@@ -1717,3 +1816,4 @@ if __name__ == '__main__':
        # 執行資料庫升級檢查
        upgrade_database()
    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+            
