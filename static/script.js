@@ -23,43 +23,46 @@ let emotionChart = null;
 let cameraReady = false;
 let cameraError = false;
 
-// 情緒標籤對應 - 修正為正確的七種情緒
-const EMOTION_LABELS = ['anger', 'disgust', 'fear', 'happy', 'no emotion', 'sad', 'surprise'];
+// 情緒標籤對應 - 更新為新的八類情緒
+const EMOTION_LABELS = ['neutral', 'happy', 'surprised', 'sad', 'fear', 'angry', 'disgust', 'not_emotion'];
 
 // 即時情緒統計
 let currentEmotionCounts = {
-    'anger': 0,
-    'disgust': 0,
-    'fear': 0,
+    'neutral': 0,
     'happy': 0,
-    'no emotion': 0,
+    'surprised': 0,
     'sad': 0,
-    'surprise': 0
+    'fear': 0,
+    'angry': 0,
+    'disgust': 0,
+    'not_emotion': 0
 };
 
 // 當前主要情緒
-let currentMainEmotion = 'no emotion';
+let currentMainEmotion = 'neutral';
 
-// 情緒圖標對應
+// 情緒圖標對應 - 更新圖標和顏色
 const EMOTION_ICONS = {
-    'anger': { icon: 'fas fa-angry', color: '#E74C3C' },
-    'disgust': { icon: 'fas fa-grimace', color: '#8E44AD' },
-    'fear': { icon: 'fas fa-dizzy', color: '#2C3E50' },
-    'happy': { icon: 'fas fa-smile', color: '#F1C40F' },
-    'no emotion': { icon: 'fas fa-meh', color: '#95A5A6' },
-    'sad': { icon: 'fas fa-sad-tear', color: '#3498DB' },
-    'surprise': { icon: 'fas fa-surprise', color: '#E67E22' }
+    'neutral': { icon: 'fas fa-meh', color: '#2ECC71' },        // 中性（最專注）- 綠色
+    'happy': { icon: 'fas fa-smile', color: '#F39C12' },       // 開心 - 橙色
+    'surprised': { icon: 'fas fa-surprise', color: '#E74C3C' }, // 驚訝 - 紅色
+    'sad': { icon: 'fas fa-sad-tear', color: '#3498DB' },      // 難過 - 藍色
+    'fear': { icon: 'fas fa-dizzy', color: '#9B59B6' },        // 恐懼 - 紫色
+    'angry': { icon: 'fas fa-angry', color: '#E74C3C' },       // 生氣 - 紅色
+    'disgust': { icon: 'fas fa-grimace', color: '#8E44AD' },   // 厭惡 - 深紫色
+    'not_emotion': { icon: 'fas fa-question', color: '#95A5A6' } // 無情緒 - 灰色
 };
 
-// 情緒標籤中文對應
+// 情緒標籤中文對應 - 更新中文標籤
 const EMOTION_LABELS_ZH = {
-    'anger': '生氣',
-    'disgust': '厭惡', 
-    'fear': '恐懼',
+    'neutral': '專注',
     'happy': '開心',
-    'no emotion': '平靜',
+    'surprised': '驚訝',
     'sad': '難過',
-    'surprise': '驚訝'
+    'fear': '恐懼',
+    'angry': '生氣',
+    'disgust': '厭惡',
+    'not_emotion': '分心'
 };
 
 // 頁面載入完成後初始化
@@ -113,14 +116,16 @@ async function initStudyPage() {
     initEmotionLights();
 }
 
-// 初始化情緒燈光
+// 初始化情緒燈光 - 只顯示前七種情緒（不顯示 not_emotion）
 function initEmotionLights() {
-    // 創建七個情緒燈光元素
+    // 創建七個情緒燈光元素（不包含 not_emotion）
     const emotionLightsContainer = document.getElementById('emotionLights');
     if (emotionLightsContainer) {
         emotionLightsContainer.innerHTML = '';
         
-        EMOTION_LABELS.forEach(emotion => {
+        const displayEmotions = EMOTION_LABELS.filter(emotion => emotion !== 'not_emotion');
+        
+        displayEmotions.forEach(emotion => {
             const emotionLight = document.createElement('div');
             emotionLight.className = 'emotion-light-item';
             emotionLight.id = `emotion-${emotion.replace(' ', '-')}`;
@@ -531,7 +536,7 @@ async function startStudySession() {
             for (let emotion in currentEmotionCounts) {
                 currentEmotionCounts[emotion] = 0;
             }
-            currentMainEmotion = 'no emotion';
+            currentMainEmotion = 'neutral';
             
             // 重置所有情緒燈光
             resetEmotionLights();
@@ -627,6 +632,12 @@ async function detectFaceAndEmotion() {
         }
         
         hideDetectionWarning();
+        
+        // 如果檢測到的情緒是 not_emotion，則不記錄但繼續檢測
+        if (detectionResult.emotion === 'not_emotion') {
+            return; // 直接返回，不記錄此次檢測
+        }
+        
         validDetections++;
         
         // 更新專注度指示器
@@ -831,21 +842,22 @@ async function performEnhancedSimulation() {
     };
 }
 
-// 模擬情緒檢測
+// 模擬情緒檢測 - 更新為新的八類情緒分布
 function simulateEmotion() {
-    // 模擬更真實的情緒分布
+    // 模擬新的情緒分布，neutral（專注）佔較高比例
     const emotionWeights = {
-        'no emotion': 0.45,
-        'happy': 0.15,
-        'anger': 0.08,
-        'sad': 0.08,
-        'surprise': 0.08,
-        'fear': 0.08,
-        'disgust': 0.08
+        'neutral': 0.40,      // 專注狀態
+        'happy': 0.15,        // 開心
+        'surprised': 0.10,    // 驚訝
+        'sad': 0.08,          // 難過
+        'fear': 0.08,         // 恐懼
+        'angry': 0.07,        // 生氣
+        'disgust': 0.07,      // 厭惡
+        'not_emotion': 0.05   // 無情緒（分心）
     };
     
     let randomValue = Math.random();
-    let emotion = 'no emotion';
+    let emotion = 'neutral';
     
     for (const [emo, weight] of Object.entries(emotionWeights)) {
         randomValue -= weight;
@@ -859,16 +871,18 @@ function simulateEmotion() {
     return { emotion, confidence };
 }
 
-// 根據情緒計算專注度
+// 根據情緒計算專注度 - 更新為新的專注度映射
 function calculateAttentionFromEmotion(emotion, confidence) {
+    // 新的專注度映射：neutral 最高專注度
     const attentionMap = {
-        'no emotion': 3,
-        'happy': 2,
-        'surprise': 2,
-        'anger': 1,
-        'sad': 1,
-        'fear': 1,
-        'disgust': 1
+        'neutral': 3,       // 專注 - 最高專注度
+        'happy': 2,         // 開心 - 中專注度
+        'surprised': 2,     // 驚訝 - 中專注度
+        'sad': 1,          // 難過 - 低專注度
+        'fear': 1,         // 恐懼 - 低專注度
+        'angry': 1,        // 生氣 - 低專注度
+        'disgust': 1,      // 厭惡 - 低專注度
+        'not_emotion': 0   // 無情緒 - 完全不專注（但不會記錄）
     };
     
     let baseAttention = attentionMap[emotion] || 2;
@@ -883,9 +897,9 @@ function calculateAttentionFromEmotion(emotion, confidence) {
     return Math.round(baseAttention);
 }
 
-// 更新情緒統計
+// 更新情緒統計 - 不統計 not_emotion
 function updateEmotionCounts(emotion) {
-    if (currentEmotionCounts.hasOwnProperty(emotion)) {
+    if (currentEmotionCounts.hasOwnProperty(emotion) && emotion !== 'not_emotion') {
         currentEmotionCounts[emotion]++;
         
         // 更新當前主要情緒
@@ -893,13 +907,13 @@ function updateEmotionCounts(emotion) {
     }
 }
 
-// 更新當前主要情緒
+// 更新當前主要情緒 - 排除 not_emotion
 function updateCurrentMainEmotion() {
     let maxCount = 0;
-    let mainEmotion = 'no emotion';
+    let mainEmotion = 'neutral';
     
     for (const [emotion, count] of Object.entries(currentEmotionCounts)) {
-        if (count > maxCount) {
+        if (emotion !== 'not_emotion' && count > maxCount) {
             maxCount = count;
             mainEmotion = emotion;
         }
@@ -908,9 +922,11 @@ function updateCurrentMainEmotion() {
     currentMainEmotion = mainEmotion;
 }
 
-// 重置所有情緒燈光
+// 重置所有情緒燈光 - 只重置顯示的七種情緒
 function resetEmotionLights() {
-    EMOTION_LABELS.forEach(emotion => {
+    const displayEmotions = EMOTION_LABELS.filter(emotion => emotion !== 'not_emotion');
+    
+    displayEmotions.forEach(emotion => {
         const lightElement = document.getElementById(`emotion-${emotion.replace(' ', '-')}`);
         if (lightElement) {
             lightElement.style.opacity = '0.3';
@@ -920,8 +936,13 @@ function resetEmotionLights() {
     });
 }
 
-// 更新情緒燈光
+// 更新情緒燈光 - 只更新顯示的七種情緒
 function updateEmotionLights(detectedEmotion, confidence) {
+    // 如果檢測到 not_emotion，不更新燈光
+    if (detectedEmotion === 'not_emotion') {
+        return;
+    }
+    
     // 先重置所有燈光
     resetEmotionLights();
     
@@ -989,8 +1010,13 @@ function updateAttentionIndicator(attentionLevel) {
     }
 }
 
-// 記錄情緒數據
+// 記錄情緒數據 - 不記錄 not_emotion
 async function recordEmotionData(detectionResult) {
+    // 如果是 not_emotion，不記錄到本地數組和服務器
+    if (detectionResult.emotion === 'not_emotion') {
+        return;
+    }
+    
     emotionData.push({
         timestamp: new Date(),
         emotion: detectionResult.emotion,
