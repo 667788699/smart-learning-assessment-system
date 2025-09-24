@@ -19,6 +19,10 @@ let multipleFaceWarningCount = 0;
 let faceDetectionModel = null;
 let emotionChart = null;
 
+// 新增：攝像頭狀態變數
+let cameraReady = false;
+let cameraError = false;
+
 // 情緒標籤對應 - 修正為正確的七種情緒
 const EMOTION_LABELS = ['anger', 'disgust', 'fear', 'happy', 'no emotion', 'sad', 'surprise'];
 
@@ -259,7 +263,7 @@ function showMessage(message, type = 'error') {
     }
 }
 
-// 初始化攝影機
+// 修改後的攝影機初始化函數
 async function initCamera() {
     try {
         video = document.getElementById('video');
@@ -268,6 +272,8 @@ async function initCamera() {
         if (!video || !canvas) return;
         
         ctx = canvas.getContext('2d');
+        
+        updateCameraStatus('正在啟動攝影機...', 'info');
         
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -280,12 +286,37 @@ async function initCamera() {
         video.srcObject = stream;
         
         video.addEventListener('loadedmetadata', () => {
+            cameraReady = true;
+            cameraError = false;
             updateCameraStatus('攝影機已就緒', 'success');
+            updateStartButtonState();
+        });
+        
+        video.addEventListener('error', () => {
+            cameraReady = false;
+            cameraError = true;
+            updateCameraStatus('攝影機載入失敗', 'error');
+            updateStartButtonState();
         });
         
     } catch (error) {
         console.error('攝影機初始化失敗:', error);
-        updateCameraStatus('無法存取攝影機，請檢查權限設定', 'error');
+        cameraReady = false;
+        cameraError = true;
+        
+        let errorMessage = '無法存取攝影機';
+        if (error.name === 'NotAllowedError') {
+            errorMessage = '請允許瀏覽器存取攝影機權限';
+        } else if (error.name === 'NotFoundError') {
+            errorMessage = '未找到可用的攝影機設備';
+        } else if (error.name === 'NotReadableError') {
+            errorMessage = '攝影機正被其他應用程式使用';
+        } else {
+            errorMessage = '攝影機初始化失敗，請檢查設備連接';
+        }
+        
+        updateCameraStatus(errorMessage, 'error');
+        updateStartButtonState();
     }
 }
 
@@ -295,6 +326,33 @@ function updateCameraStatus(message, type = 'info') {
     if (statusElement) {
         statusElement.className = `alert alert-${type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info'}`;
         statusElement.innerHTML = `<i class="fas fa-${type === 'error' ? 'exclamation-circle' : type === 'success' ? 'check-circle' : 'info-circle'} me-2"></i>${message}`;
+        
+        // 如果是錯誤狀態，添加重試按鈕
+        if (type === 'error') {
+            const retryButton = document.createElement('button');
+            retryButton.className = 'btn btn-sm btn-outline-danger ms-3';
+            retryButton.innerHTML = '<i class="fas fa-redo me-1"></i>重新嘗試';
+            retryButton.onclick = async () => {
+                await initCamera();
+            };
+            statusElement.appendChild(retryButton);
+        }
+    }
+}
+
+// 新增：更新開始按鈕狀態
+function updateStartButtonState() {
+    const startButton = document.getElementById('startButton');
+    if (startButton) {
+        if (cameraReady && !cameraError) {
+            startButton.disabled = false;
+            startButton.innerHTML = '<i class="fas fa-play me-2"></i>開始學習';
+            startButton.className = 'btn btn-success btn-lg';
+        } else {
+            startButton.disabled = true;
+            startButton.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>請先開啟攝影機';
+            startButton.className = 'btn btn-warning btn-lg';
+        }
     }
 }
 
@@ -345,6 +403,9 @@ function initStudyControls() {
             }
         });
     }
+    
+    // 初始化按鈕狀態
+    updateStartButtonState();
 }
 
 // 載入 AI 模型
@@ -394,14 +455,19 @@ async function loadModels() {
             emotionModel = { loaded: true, simulated: true };
         }
         
-        updateCameraStatus('AI 模型已就緒，可以開始學習', 'success');
+        if (cameraReady) {
+            updateCameraStatus('AI 模型已就緒，可以開始學習', 'success');
+        }
         
     } catch (error) {
         console.error('模型載入失敗:', error);
         // 使用模擬模式
         faceDetectionModel = { loaded: true, simulated: true };
         emotionModel = { loaded: true, simulated: true };
-        updateCameraStatus('使用模擬 AI 模型', 'warning');
+        
+        if (cameraReady) {
+            updateCameraStatus('使用模擬 AI 模型', 'warning');
+        }
     }
 }
 
@@ -412,8 +478,20 @@ function onFaceDetectionResults(results) {
     lastFaceDetectionResult = results;
 }
 
-// 開始學習階段
+// 修改後的開始學習階段函數
 async function startStudySession() {
+    // 檢查攝像頭狀態
+    if (!cameraReady || cameraError) {
+        showMessage('請先開啟攝影機才能開始學習！', 'error');
+        return;
+    }
+    
+    // 檢查視頻流是否正常
+    if (!video || !video.srcObject || video.readyState < 2) {
+        showMessage('攝影機尚未準備就緒，請稍候片刻再試', 'error');
+        return;
+    }
+    
     const duration = parseInt(document.getElementById('studyDuration').value);
     
     if (!faceDetectionModel || !emotionModel) {
