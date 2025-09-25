@@ -138,7 +138,7 @@
                 </div>
             </div>
             
-            <!-- 即時情緒分析 - 七個情緒燈光（不包含 not_emotion） -->
+            <!-- 即時情緒分析 - 八個情緒燈光（包含 not_emotion） -->
             <div class="card control-card" id="emotionCard" style="display: none;">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -147,13 +147,7 @@
                 </div>
                 <div class="card-body emotion-card-body">
                     <div id="emotionLights" class="emotion-lights-container">
-                        <!-- JavaScript 將動態生成七個情緒燈光（不包含 not_emotion） -->
-                    </div>
-                    <div class="text-center mt-2">
-                        <small class="text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            專注：最高專注度 | 開心/驚訝：中等專注度 | 其他：較低專注度
-                        </small>
+                        <!-- JavaScript 將動態生成八個情緒燈光（包含 not_emotion） -->
                     </div>
                 </div>
             </div>
@@ -299,7 +293,7 @@
     padding: 1rem;
 }
 
-/* 情緒燈光容器 */
+/* 情緒燈光容器 - 保持原來的格式，但支援八個情緒 */
 .emotion-lights-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -438,7 +432,7 @@
     }
     
     .emotion-lights-container {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
         padding: 8px;
     }

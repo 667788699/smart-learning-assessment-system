@@ -260,7 +260,7 @@ body {
     object-fit: cover;
 }
 
-/* 情緒燈光顯示 - 更新為七種情緒的樣式 */
+/* 情緒燈光顯示 - 更新為八種情緒的樣式（包含 not_emotion） */
 #emotionLights {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -294,7 +294,7 @@ body {
     margin-top: 5px;
 }
 
-/* 各種情緒的顏色配置 */
+/* 各種情緒的顏色配置（包含 not_emotion） */
 #emotion-neutral {
     color: #2ECC71;
 }
@@ -365,6 +365,18 @@ body {
     background-color: rgba(142, 68, 173, 0.1);
 }
 
+/* not_emotion 特殊樣式 */
+#emotion-not-emotion {
+    color: #95A5A6;
+    border: 2px dashed #95A5A6 !important;
+}
+
+#emotion-not-emotion.active {
+    color: #95A5A6;
+    border: 2px dashed #95A5A6 !important;
+    background-color: rgba(149, 165, 166, 0.1);
+}
+
 .emotion-light-item.active {
     opacity: 1;
     transform: scale(1.05);
@@ -384,6 +396,18 @@ body {
     50% {
         transform: scale(1.1);
         box-shadow: 0 0 25px rgba(255,255,255,0.5);
+    }
+}
+
+/* not_emotion 特殊閃爍動畫 */
+@keyframes notEmotionBlink {
+    0%, 50%, 100% {
+        opacity: 1;
+        border-color: #95A5A6;
+    }
+    25%, 75% {
+        opacity: 0.6;
+        border-color: #e74c3c;
     }
 }
 
@@ -1195,7 +1219,7 @@ canvas {
     }
     
     #emotionLights {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 8px;
         padding: 8px;
     }
