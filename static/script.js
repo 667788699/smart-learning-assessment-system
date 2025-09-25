@@ -802,11 +802,11 @@ function calculateAttentionFromEmotion(emotion, confidence) {
     let baseAttention = attentionMap[emotion] || 2;
     
     // 根據信心度調整
-    if (confidence < 0.6) {
-        baseAttention = Math.max(1, baseAttention - 1);
-    } else if (confidence > 0.85) {
-        baseAttention = Math.min(3, baseAttention + 0.5);
-    }
+    // if (confidence < 0.6) {
+    //     baseAttention = Math.max(1, baseAttention - 1);
+    // } else if (confidence > 0.85) {
+    //     baseAttention = Math.min(3, baseAttention + 0.5);
+    // }
     
     return Math.round(baseAttention);
 }
