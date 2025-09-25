@@ -260,7 +260,7 @@ body {
     object-fit: cover;
 }
 
-/* 情緒燈光顯示 - 更新為八種情緒的樣式（包含 not_emotion） */
+/* 情緒燈光顯示 - 支援八種情緒（包含no_emotion） */
 #emotionLights {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
@@ -294,7 +294,7 @@ body {
     margin-top: 5px;
 }
 
-/* 各種情緒的顏色配置（包含 not_emotion） */
+/* 各種情緒的顏色配置（包含no_emotion） */
 #emotion-neutral {
     color: #2ECC71;
 }
@@ -315,11 +315,11 @@ body {
     background-color: rgba(243, 156, 18, 0.1);
 }
 
-#emotion-surprised {
+#emotion-surprise {
     color: #E74C3C;
 }
 
-#emotion-surprised.active {
+#emotion-surprise.active {
     color: #E74C3C;
     border-color: #E74C3C;
     background-color: rgba(231, 76, 60, 0.1);
@@ -345,11 +345,11 @@ body {
     background-color: rgba(155, 89, 182, 0.1);
 }
 
-#emotion-angry {
+#emotion-anger {
     color: #E74C3C;
 }
 
-#emotion-angry.active {
+#emotion-anger.active {
     color: #E74C3C;
     border-color: #E74C3C;
     background-color: rgba(231, 76, 60, 0.1);
@@ -365,16 +365,16 @@ body {
     background-color: rgba(142, 68, 173, 0.1);
 }
 
-/* not_emotion 特殊樣式 */
-#emotion-not-emotion {
+/* no_emotion 特殊樣式 - 警告狀態 */
+#emotion-no-emotion {
     color: #95A5A6;
     border: 2px dashed #95A5A6 !important;
 }
 
-#emotion-not-emotion.active {
-    color: #95A5A6;
-    border: 2px dashed #95A5A6 !important;
-    background-color: rgba(149, 165, 166, 0.1);
+#emotion-no-emotion.active {
+    color: #e74c3c;
+    border: 2px dashed #e74c3c !important;
+    background-color: rgba(231, 76, 60, 0.1);
 }
 
 .emotion-light-item.active {
@@ -399,16 +399,23 @@ body {
     }
 }
 
-/* not_emotion 特殊閃爍動畫 */
+/* no_emotion 特殊閃爍動畫 */
 @keyframes notEmotionBlink {
     0%, 50%, 100% {
         opacity: 1;
-        border-color: #95A5A6;
+        border-color: #e74c3c;
+        color: #e74c3c;
     }
     25%, 75% {
         opacity: 0.6;
-        border-color: #e74c3c;
+        border-color: #95A5A6;
+        color: #95A5A6;
     }
+}
+
+/* no_emotion 閃爍時的特效 */
+#emotion-no-emotion.active {
+    animation: notEmotionBlink 1s infinite;
 }
 
 /* 情緒卡片增強樣式 */
@@ -1344,6 +1351,15 @@ canvas {
     display: flex;
     justify-content: space-around;
     align-items: center;
+}
+
+/* 精簡統計卡片樣式 */
+.compact-card .card-header {
+    padding: 0.5rem 1rem;
+}
+
+.compact-card .card-body {
+    padding: 0.75rem;
 }
 
 /* 統計卡片的數字強調 */

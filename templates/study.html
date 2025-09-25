@@ -138,7 +138,7 @@
                 </div>
             </div>
             
-            <!-- 即時情緒分析 - 八個情緒燈光（包含 not_emotion） -->
+            <!-- 即時情緒分析 - 八個情緒燈光（包含 no_emotion） -->
             <div class="card control-card" id="emotionCard" style="display: none;">
                 <div class="card-header">
                     <h5 class="mb-0">
@@ -147,7 +147,15 @@
                 </div>
                 <div class="card-body emotion-card-body">
                     <div id="emotionLights" class="emotion-lights-container">
-                        <!-- JavaScript 將動態生成八個情緒燈光（包含 not_emotion） -->
+                        <!-- JavaScript 將動態生成八個情緒燈光（包含 no_emotion） -->
+                    </div>
+                    
+                    <!-- 情緒狀態說明 -->
+                    <div class="mt-2">
+                        <small class="text-muted d-flex align-items-center">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span>中性狀態表示專注學習，無情緒表示分心狀態</span>
+                        </small>
                     </div>
                 </div>
             </div>

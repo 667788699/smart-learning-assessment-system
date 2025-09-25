@@ -23,10 +23,10 @@ let emotionChart = null;
 let cameraReady = false;
 let cameraError = false;
 
-// 情緒標籤對應 - 更新順序為指定的八類情緒
+// 情緒標籤對應 - 更新順序為指定的八類情緒（包含no_emotion）
 const EMOTION_LABELS = ['anger', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise', 'no_emotion'];
 
-// 即時情緒統計
+// 即時情緒統計 - 包含no_emotion
 let currentEmotionCounts = {
     'anger': 0,
     'disgust': 0,
@@ -38,23 +38,22 @@ let currentEmotionCounts = {
     'no_emotion': 0
 };
 
-
 // 當前主要情緒
 let currentMainEmotion = 'neutral';
 
-// 情緒圖標對應 - 更新圖標和顏色
+// 情緒圖標對應 - 包含no_emotion
 const EMOTION_ICONS = {
     'anger': { icon: 'fas fa-angry', color: '#E74C3C' },       // 生氣 - 紅色
     'disgust': { icon: 'fas fa-grimace', color: '#8E44AD' },   // 厭惡 - 深紫色
     'fear': { icon: 'fas fa-dizzy', color: '#9B59B6' },        // 恐懼 - 紫色
     'happy': { icon: 'fas fa-smile', color: '#F39C12' },       // 開心 - 橙色
-    'neutral': { icon: 'fas fa-meh', color: '#2ECC71' },        // 中性（最專注）- 綠色
+    'neutral': { icon: 'fas fa-meh', color: '#2ECC71' },       // 中性（最專注）- 綠色
     'sad': { icon: 'fas fa-sad-tear', color: '#3498DB' },      // 難過 - 藍色
     'surprise': { icon: 'fas fa-surprise', color: '#E74C3C' }, // 驚訝 - 紅色
     'no_emotion': { icon: 'fas fa-question', color: '#95A5A6' } // 無情緒 - 灰色
 };
 
-// 情緒標籤中文對應 - 更新中文標籤
+// 情緒標籤中文對應 - 包含no_emotion
 const EMOTION_LABELS_ZH = {
     'anger': '生氣',
     'disgust': '厭惡',
@@ -65,7 +64,6 @@ const EMOTION_LABELS_ZH = {
     'surprise': '驚訝',
     'no_emotion': '無情緒'
 };
-
 
 // 頁面載入完成後初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -118,19 +116,18 @@ async function initStudyPage() {
     initEmotionLights();
 }
 
-// 初始化情緒燈光 - 只顯示前七種情緒（不顯示 no_emotion）
+// 初始化情緒燈光 - 顯示全部八種情緒（包含no_emotion）
 function initEmotionLights() {
-    // 創建七個情緒燈光元素（不包含 no_emotion）
+    // 創建八個情緒燈光元素（包含no_emotion）
     const emotionLightsContainer = document.getElementById('emotionLights');
     if (emotionLightsContainer) {
         emotionLightsContainer.innerHTML = '';
         
-        const displayEmotions = EMOTION_LABELS.filter(emotion => emotion !== 'no_emotion');
-        
-        displayEmotions.forEach(emotion => {
+        // 顯示全部八種情緒
+        EMOTION_LABELS.forEach(emotion => {
             const emotionLight = document.createElement('div');
             emotionLight.className = 'emotion-light-item';
-            emotionLight.id = `emotion-${emotion.replace(' ', '-')}`;
+            emotionLight.id = `emotion-${emotion.replace('_', '-')}`;
             
             const icon = document.createElement('i');
             icon.className = `${EMOTION_ICONS[emotion].icon} fa-2x`;
@@ -270,7 +267,7 @@ function showMessage(message, type = 'error') {
     }
 }
 
-// 修改後的攝影機初始化函數
+// 攝影機初始化函數
 async function initCamera() {
     try {
         video = document.getElementById('video');
@@ -347,17 +344,21 @@ function updateCameraStatus(message, type = 'info') {
     }
 }
 
-// 新增：更新開始按鈕狀態
+// 更新開始按鈕狀態
 function updateStartButtonState() {
     const startButton = document.getElementById('startButton');
     if (startButton) {
-        if (cameraReady && !cameraError) {
+        if (cameraReady && !cameraError && faceDetectionModel && emotionModel) {
             startButton.disabled = false;
             startButton.innerHTML = '<i class="fas fa-play me-2"></i>開始學習';
             startButton.className = 'btn btn-success btn-lg';
         } else {
             startButton.disabled = true;
-            startButton.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>請先開啟攝影機';
+            if (!cameraReady || cameraError) {
+                startButton.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>請先開啟攝影機';
+            } else if (!faceDetectionModel || !emotionModel) {
+                startButton.innerHTML = '<i class="fas fa-hourglass-half me-2"></i>AI 模型載入中...';
+            }
             startButton.className = 'btn btn-warning btn-lg';
         }
     }
@@ -415,7 +416,7 @@ function initStudyControls() {
     updateStartButtonState();
 }
 
-// 載入 AI 模型 - 修正路徑問題
+// 載入 AI 模型
 async function loadModels() {
     try {
         updateCameraStatus('正在載入 AI 模型...', 'info');
@@ -435,62 +436,48 @@ async function loadModels() {
             
             faceDetectionModel.onResults(onFaceDetectionResults);
             console.log('MediaPipe Face Detection 模型載入成功');
-        }
-        
-        // 載入 TensorFlow.js - 修正路徑
-        if (typeof tf !== 'undefined') {
-            try {
-                // 修正模型路徑 - 使用絕對路徑
-                const modelPath = '/static/models/emotion_model.json';
-                console.log('嘗試載入模型路徑:', modelPath);
-                
-                // 先檢查模型文件是否存在
-                const response = await fetch(modelPath);
-                if (!response.ok) {
-                    throw new Error(`模型文件不存在: ${modelPath} (狀態碼: ${response.status})`);
-                }
-                
-                emotionModel = await tf.loadLayersModel(modelPath);
-                console.log('情緒分類模型載入成功');
-                console.log('模型輸入形狀:', emotionModel.inputs[0].shape);
-                console.log('模型輸出形狀:', emotionModel.outputs[0].shape);
-                
-            } catch (error) {
-                console.warn('無法載入情緒分類模型:', error.message);
-                console.log('使用模擬模式');
-                emotionModel = { loaded: true, simulated: true };
-            }
         } else {
-            console.warn('TensorFlow.js 未載入，使用備用方案');
-            emotionModel = { loaded: true, simulated: true };
+            throw new Error('MediaPipe Face Detection 庫未載入');
         }
         
-        // 如果無法載入真實模型，使用模擬模式
-        if (!faceDetectionModel) {
-            console.log('使用模擬模式進行臉部檢測');
-            faceDetectionModel = { loaded: true, simulated: true };
-        }
-        
-        if (!emotionModel) {
-            emotionModel = { loaded: true, simulated: true };
+        // 載入 TensorFlow.js 情緒模型
+        if (typeof tf !== 'undefined') {
+            // 修正模型路徑 - 使用絕對路徑
+            const modelPath = '/static/models/emotion_model.json';
+            console.log('嘗試載入模型路徑:', modelPath);
+            
+            // 先檢查模型文件是否存在
+            const response = await fetch(modelPath);
+            if (!response.ok) {
+                throw new Error(`模型文件不存在: ${modelPath} (狀態碼: ${response.status})`);
+            }
+            
+            emotionModel = await tf.loadLayersModel(modelPath);
+            console.log('情緒分類模型載入成功');
+            console.log('模型輸入形狀:', emotionModel.inputs[0].shape);
+            console.log('模型輸出形狀:', emotionModel.outputs[0].shape);
+            
+        } else {
+            throw new Error('TensorFlow.js 庫未載入');
         }
         
         if (cameraReady) {
-            if (emotionModel.simulated) {
-                updateCameraStatus('模型已就緒（模擬模式），可以開始學習', 'warning');
-            } else {
-                updateCameraStatus('AI 模型已就緒，可以開始學習', 'success');
-            }
+            updateCameraStatus('AI 模型已就緒，可以開始學習', 'success');
         }
+        
+        // 更新按鈕狀態
+        updateStartButtonState();
         
     } catch (error) {
         console.error('模型載入失敗:', error);
-        // 使用模擬模式
-        faceDetectionModel = { loaded: true, simulated: true };
-        emotionModel = { loaded: true, simulated: true };
+        updateCameraStatus(`模型載入失敗: ${error.message}`, 'error');
         
-        if (cameraReady) {
-            updateCameraStatus('使用模擬 AI 模型', 'warning');
+        // 模型載入失敗，無法使用系統
+        const startButton = document.getElementById('startButton');
+        if (startButton) {
+            startButton.disabled = true;
+            startButton.innerHTML = '<i class="fas fa-times me-2"></i>模型載入失敗';
+            startButton.className = 'btn btn-danger btn-lg';
         }
     }
 }
@@ -502,7 +489,7 @@ function onFaceDetectionResults(results) {
     lastFaceDetectionResult = results;
 }
 
-// 修改後的開始學習階段函數
+// 開始學習階段函數
 async function startStudySession() {
     // 檢查攝像頭狀態
     if (!cameraReady || cameraError) {
@@ -516,12 +503,13 @@ async function startStudySession() {
         return;
     }
     
-    const duration = parseInt(document.getElementById('studyDuration').value);
-    
+    // 檢查模型是否載入
     if (!faceDetectionModel || !emotionModel) {
-        showMessage('AI 模型尚未就緒，請稍候');
+        showMessage('AI 模型尚未載入完成，請稍候', 'error');
         return;
     }
+    
+    const duration = parseInt(document.getElementById('studyDuration').value);
     
     try {
         const response = await fetch('/start_session', {
@@ -551,13 +539,13 @@ async function startStudySession() {
             detectionCount = 0;
             validDetections = 0;
             
-            // 重置情緒統計
+            // 重置情緒統計（包含no_emotion）
             for (let emotion in currentEmotionCounts) {
                 currentEmotionCounts[emotion] = 0;
             }
             currentMainEmotion = 'neutral';
             
-            // 重置所有情緒燈光
+            // 重置所有情緒燈光（包含no_emotion）
             resetEmotionLights();
             
             // 隱藏設定卡片，顯示狀態卡片
@@ -636,14 +624,7 @@ async function detectFaceAndEmotion() {
         // 將影片畫面繪製到 canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        let detectionResult;
-        
-        // 檢查是否使用真實的人臉檢測
-        if (faceDetectionModel && !faceDetectionModel.simulated) {
-            detectionResult = await performRealFaceDetection();
-        } else {
-            detectionResult = await performEnhancedSimulation();
-        }
+        const detectionResult = await performRealFaceDetection();
         
         if (detectionResult.error) {
             showDetectionWarning(detectionResult.error);
@@ -652,9 +633,16 @@ async function detectFaceAndEmotion() {
         
         hideDetectionWarning();
         
-        // 如果檢測到的情緒是 no_emotion，則不記錄但繼續檢測
+        // 如果檢測到的情緒是 no_emotion，顯示警告但不記錄注意力
         if (detectionResult.emotion === 'no_emotion') {
-            return; // 直接返回，不記錄此次檢測
+            showDetectionWarning('檢測到無情緒，請不要側身或是在鏡頭外面！');
+            
+            // 更新情緒統計和燈光（包含no_emotion）
+            updateEmotionCounts(detectionResult.emotion);
+            updateEmotionLights(detectionResult.emotion, detectionResult.confidence);
+            
+            // 不記錄此次檢測，但繼續檢測
+            return;
         }
         
         validDetections++;
@@ -674,6 +662,7 @@ async function detectFaceAndEmotion() {
         
     } catch (error) {
         console.error('檢測過程發生錯誤:', error);
+        showDetectionWarning('檢測系統發生錯誤，請重新開始');
     }
 }
 
@@ -722,19 +711,18 @@ async function performRealFaceDetection() {
             }
         }
         
-        // 如果無法使用真實檢測，回退到增強模擬
-        return await performEnhancedSimulation();
+        throw new Error('人臉檢測模型不可用');
         
     } catch (error) {
         console.error('真實人臉檢測失敗:', error);
-        return await performEnhancedSimulation();
+        throw error;
     }
 }
 
 // 執行情緒檢測 - 使用正確的模型預處理
 async function performEmotionDetection(face) {
     try {
-        if (emotionModel && !emotionModel.simulated && typeof tf !== 'undefined') {
+        if (emotionModel && typeof tf !== 'undefined') {
             // 從 face 中提取臉部區域
             const faceCanvas = document.createElement('canvas');
             faceCanvas.width = 112;  // 根據模型輸入尺寸調整
@@ -788,127 +776,18 @@ async function performEmotionDetection(face) {
             
             return { emotion, confidence };
         }
+        
+        throw new Error('情緒檢測模型不可用');
+        
     } catch (error) {
         console.error('情緒檢測失敗:', error);
+        throw error;
     }
-    
-    // 回退到模擬情緒檢測
-    return simulateEmotion();
 }
 
-// 增強版模擬檢測（更真實的人臉檢測行為）
-async function performEnhancedSimulation() {
-    // 使用簡單的像素分析來模擬人臉檢測
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const pixels = imageData.data;
-    
-    // 計算圖像中心區域的亮度變化（簡單的人臉存在檢測）
-    let centerBrightness = 0;
-    let edgeBrightness = 0;
-    let centerPixels = 0;
-    let edgePixels = 0;
-    
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const faceRadius = Math.min(canvas.width, canvas.height) / 6;
-    
-    for (let y = 0; y < canvas.height; y += 4) {
-        for (let x = 0; x < canvas.width; x += 4) {
-            const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-            const pixelIndex = (y * canvas.width + x) * 4;
-            const brightness = (pixels[pixelIndex] + pixels[pixelIndex + 1] + pixels[pixelIndex + 2]) / 3;
-            
-            if (distance < faceRadius) {
-                centerBrightness += brightness;
-                centerPixels++;
-            } else if (distance > faceRadius * 2) {
-                edgeBrightness += brightness;
-                edgePixels++;
-            }
-        }
-    }
-    
-    const avgCenterBrightness = centerBrightness / centerPixels;
-    const avgEdgeBrightness = edgeBrightness / edgePixels;
-    const contrast = Math.abs(avgCenterBrightness - avgEdgeBrightness);
-    
-    // 檢測多人的簡單方法：檢查是否有多個亮度區域
-    let brightRegions = 0;
-    for (let y = 0; y < canvas.height; y += 20) {
-        for (let x = 0; x < canvas.width; x += 20) {
-            const pixelIndex = (y * canvas.width + x) * 4;
-            const brightness = (pixels[pixelIndex] + pixels[pixelIndex + 1] + pixels[pixelIndex + 2]) / 3;
-            if (brightness > avgCenterBrightness + 20) {
-                brightRegions++;
-            }
-        }
-    }
-    
-    // 根據圖像分析結果決定檢測結果
-    const rand = Math.random();
-    
-    // 如果對比度太低，可能沒有人臉
-    if (contrast < 15 && rand < 0.3) {
-        noFaceWarningCount++;
-        if (noFaceWarningCount >= 2) {
-            return { error: '未檢測到人臉，請確保臉部在攝影機範圍內並面向攝影機' };
-        }
-    }
-    
-    // 如果有太多亮區域，可能有多人
-    if (brightRegions > 8 && rand < 0.15) {
-        multipleFaceWarningCount++;
-        if (multipleFaceWarningCount >= 1) {
-            return { error: '檢測到多人，請確保只有一人在攝影機前' };
-        }
-    }
-    
-    // 正常情況下的檢測
-    noFaceWarningCount = Math.max(0, noFaceWarningCount - 0.5);
-    multipleFaceWarningCount = Math.max(0, multipleFaceWarningCount - 0.5);
-    
-    const emotion = simulateEmotion();
-    const attention = calculateAttentionFromEmotion(emotion.emotion, emotion.confidence);
-    
-    return {
-        emotion: emotion.emotion,
-        attention: attention,
-        confidence: emotion.confidence
-    };
-}
-
-// 模擬情緒檢測 - 更新為新的八類情緒分布
-function simulateEmotion() {
-    // 模擬新的情緒分布，neutral（專注）佔較高比例
-    const emotionWeights = {
-        'anger': 0.07,        // 生氣
-        'disgust': 0.07,      // 厭惡
-        'fear': 0.08,         // 恐懼
-        'happy': 0.15,        // 開心
-        'neutral': 0.40,      // 專注狀態
-        'sad': 0.08,          // 難過
-        'surprise': 0.10,     // 驚訝
-        'no_emotion': 0.05    // 無情緒（分心）
-    };
-    
-    let randomValue = Math.random();
-    let emotion = 'neutral';
-    
-    for (const [emo, weight] of Object.entries(emotionWeights)) {
-        randomValue -= weight;
-        if (randomValue <= 0) {
-            emotion = emo;
-            break;
-        }
-    }
-    
-    const confidence = 0.6 + Math.random() * 0.35;
-    return { emotion, confidence };
-}
-
-// 根據情緒計算專注度 - 更新為新的專注度映射
+// 根據情緒計算專注度 - 包含no_emotion
 function calculateAttentionFromEmotion(emotion, confidence) {
-    // 新的專注度映射：neutral 最高專注度
+    // 新的專注度映射：neutral 最高專注度，no_emotion 不計算專注度
     const attentionMap = {
         'anger': 1,        // 生氣 - 低專注度
         'disgust': 1,      // 厭惡 - 低專注度
@@ -917,7 +796,7 @@ function calculateAttentionFromEmotion(emotion, confidence) {
         'neutral': 3,      // 專注 - 最高專注度
         'sad': 1,          // 難過 - 低專注度
         'surprise': 2,     // 驚訝 - 中專注度
-        'no_emotion': 0    // 無情緒 - 完全不專注（但不會記錄）
+        'no_emotion': 0    // 無情緒 - 完全不專注（不記錄）
     };
     
     let baseAttention = attentionMap[emotion] || 2;
@@ -932,9 +811,9 @@ function calculateAttentionFromEmotion(emotion, confidence) {
     return Math.round(baseAttention);
 }
 
-// 更新情緒統計 - 不統計 no_emotion
+// 更新情緒統計 - 包含no_emotion
 function updateEmotionCounts(emotion) {
-    if (currentEmotionCounts.hasOwnProperty(emotion) && emotion !== 'no_emotion') {
+    if (currentEmotionCounts.hasOwnProperty(emotion)) {
         currentEmotionCounts[emotion]++;
         
         // 更新當前主要情緒
@@ -942,13 +821,13 @@ function updateEmotionCounts(emotion) {
     }
 }
 
-// 更新當前主要情緒 - 排除 no_emotion
+// 更新當前主要情緒 - 包含no_emotion
 function updateCurrentMainEmotion() {
     let maxCount = 0;
     let mainEmotion = 'neutral';
     
     for (const [emotion, count] of Object.entries(currentEmotionCounts)) {
-        if (emotion !== 'no_emotion' && count > maxCount) {
+        if (count > maxCount) {
             maxCount = count;
             mainEmotion = emotion;
         }
@@ -957,32 +836,27 @@ function updateCurrentMainEmotion() {
     currentMainEmotion = mainEmotion;
 }
 
-// 重置所有情緒燈光 - 只重置顯示的七種情緒
+// 重置所有情緒燈光 - 包含no_emotion
 function resetEmotionLights() {
-    const displayEmotions = EMOTION_LABELS.filter(emotion => emotion !== 'no_emotion');
-    
-    displayEmotions.forEach(emotion => {
-        const lightElement = document.getElementById(`emotion-${emotion.replace(' ', '-')}`);
+    EMOTION_LABELS.forEach(emotion => {
+        const lightElement = document.getElementById(`emotion-${emotion.replace('_', '-')}`);
         if (lightElement) {
             lightElement.style.opacity = '0.3';
             lightElement.style.backgroundColor = 'transparent';
             lightElement.classList.remove('active');
+            lightElement.style.boxShadow = 'none';
+            lightElement.style.animation = 'none';
         }
     });
 }
 
-// 更新情緒燈光 - 只更新顯示的七種情緒
+// 更新情緒燈光 - 包含no_emotion的特殊處理
 function updateEmotionLights(detectedEmotion, confidence) {
-    // 如果檢測到 no_emotion，不更新燈光
-    if (detectedEmotion === 'no_emotion') {
-        return;
-    }
-    
     // 先重置所有燈光
     resetEmotionLights();
     
     // 點亮檢測到的情緒
-    const lightElement = document.getElementById(`emotion-${detectedEmotion.replace(' ', '-')}`);
+    const lightElement = document.getElementById(`emotion-${detectedEmotion.replace('_', '-')}`);
     if (lightElement) {
         // 根據信心度設定亮度（0.5 - 1.0）
         const opacity = 0.5 + (confidence * 0.5);
@@ -993,8 +867,14 @@ function updateEmotionLights(detectedEmotion, confidence) {
         // 添加發光效果
         lightElement.style.boxShadow = `0 0 20px ${EMOTION_ICONS[detectedEmotion].color}`;
         
-        // 添加脈動動畫
-        lightElement.style.animation = 'emotionPulse 2s infinite';
+        // no_emotion 特殊處理：閃爍動畫
+        if (detectedEmotion === 'no_emotion') {
+            lightElement.style.animation = 'notEmotionBlink 1s infinite';
+            lightElement.style.border = '2px dashed #e74c3c';
+        } else {
+            // 其他情緒的脈動動畫
+            lightElement.style.animation = 'emotionPulse 2s infinite';
+        }
     }
 }
 
@@ -1007,10 +887,11 @@ function showDetectionWarning(message) {
         messageElement.textContent = message;
         warningElement.style.display = 'block';
         
-        // 5秒後自動隱藏
+        // 5秒後自動隱藏（對於no_emotion警告則3秒後隱藏）
+        const hideTimeout = message.includes('無情緒') ? 3000 : 5000;
         setTimeout(() => {
             hideDetectionWarning();
-        }, 5000);
+        }, hideTimeout);
     }
 }
 
@@ -1045,7 +926,7 @@ function updateAttentionIndicator(attentionLevel) {
     }
 }
 
-// 記錄情緒數據 - 不記錄 no_emotion
+// 記錄情緒數據 - 不記錄no_emotion
 async function recordEmotionData(detectionResult) {
     // 如果是 no_emotion，不記錄到本地數組和服務器
     if (detectionResult.emotion === 'no_emotion') {
